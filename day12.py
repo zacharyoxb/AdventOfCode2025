@@ -11,47 +11,6 @@ PresentMatrix: TypeAlias = NDArray[np.int8]
 PresentMatrices: TypeAlias = list[NDArray[np.int8]]
 
 
-def find_best_placement(placement_area: int,
-                        area_size: tuple[int, int],
-                        present: int
-                        ) -> Optional[tuple[int, Callable]]:
-    """ Gets best fitting placement for present_matrix if possible
-    Returns the score of the mask and the mask of the present if successful """
-
-    width, height = area_size
-
-    best_score = -1
-    best_x, best_y = -1, -1
-
-    window_mask = int('111111111', 2)
-
-    for x in range(width):
-        for y in range(height):
-            # get window
-            window = placement_area >> (y * width) + x
-            # trim off irrelevant digits
-            window &= window_mask
-
-            # collision detected
-            if present & window:
-                continue
-
-            # Compute score (max score is 9 for 3x3 grid)
-            score = bin(present ^ window).count('1')
-
-            if score > best_score:
-                best_score = score
-                best_x, best_y = x, y
-
-    if best_score == -1:
-        return None
-
-    # construct bitmask
-    bitmask = present << (y * width) + x
-
-    return Placement(best_score, bitmask, best_x, best_y)
-
-
 @dataclass
 class Placement:
     """ Represents a placement of a present. """
@@ -61,12 +20,68 @@ class Placement:
     y: int
 
 
+def find_best_placement(placement_area: int,
+                        area_size: tuple[int, int],
+                        present: int,
+                        failed_pos_cache: set[int, int]
+                        ) -> Optional[Placement]:
+    """ Gets best fitting placement for present_matrix if possible
+    Returns the score of the mask and the mask of the present if successful
+
+    Args:
+        placement_area (int): binary number representing the space of the area
+        area_size (tuple[int, int]): width, height of the placement area
+        present (int): int representing the dimensions of the present in binary
+        failed_pos_cache (set[int, int]): set storing failed fitting attempts
+
+    Returns:
+        Optional[Placement]: If not None, best possible placement of present.
+    """
+
+    width, height = area_size
+
+    best_score = -1
+    best_x, best_y = -1, -1
+
+    window_mask = 0x1FF  # 111111111 in binary
+
+    for i in range(width * height):
+        # check cache first
+        if (i, present) in failed_pos_cache:
+            continue
+
+        # get window
+        window = placement_area >> i
+        # trim off irrelevant digits
+        window &= window_mask
+
+        # collision detected
+        if present & window:
+            failed_pos_cache.add((i, present))
+            continue
+
+        # Compute score (max score is 9 for 3x3 grid)
+        score = bin(present ^ window).count('1')
+
+        if score > best_score:
+            best_score = score
+            best_x, best_y = i // width, i % width
+
+    if best_score == -1:
+        return None
+
+    # construct bitmask
+    bitmask = present << i
+
+    return Placement(best_score, bitmask, best_x, best_y)
+
+
 def matrix_to_bitmask(matrix):
     """ Convert 3x3 matrix to 9-bit integer """
     bits = 0
-    for i in range(3):
-        for j in range(3):
-            bits |= int(matrix[i, j] << (i * 3 + j))
+    for i, val in enumerate(matrix.flatten()):
+        if val:
+            bits |= 1 << i
     return bits
 
 
@@ -84,6 +99,9 @@ def presents_can_fit(
     area = 0
     height, width = area_size
 
+    # make cache to store failed fits
+    failed_pos_cache = set()
+
     while sum(present_count) > 0:
         best_present_idx = -1
         best_placement: Placement = None
@@ -95,7 +113,8 @@ def presents_can_fit(
                 continue
 
             for orientation in present_orientations:
-                placement = find_best_placement(area, area_size, orientation)
+                placement = find_best_placement(
+                    area, area_size, orientation, failed_pos_cache)
 
                 # if present doesn't fit
                 if not placement:
