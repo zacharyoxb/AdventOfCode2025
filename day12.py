@@ -6,10 +6,11 @@ from typing import Callable, Optional, TypeAlias
 import numpy as np
 from numpy.typing import NDArray
 from numpy.lib import stride_tricks
+from tqdm import tqdm
 
 PlacementArea: TypeAlias = NDArray[np.int8]
 PresentMatrix: TypeAlias = NDArray[np.int8]
-PresentMatrices: TypeAlias = NDArray[np.int8]
+PresentMatrices: TypeAlias = list[NDArray[np.int8]]
 
 
 def get_all_orientations(present_matrix: PresentMatrix):
@@ -143,6 +144,15 @@ def presents_can_fit(
 
     # while still more presents to fit
     while sum(present_count) > 0:
+        # if area remaining is less than area of presents to place, return early
+        area_remaining = placement_area.size - np.count_nonzero(placement_area)
+        total_present_area = 0
+        for present, count in zip(present_matrices, present_count):
+            total_present_area += (present.size -
+                                   np.count_nonzero(present)) * count
+        if total_present_area > area_remaining:
+            return False
+
         # stores score, function to get mask, and index of present
         placements: list[Placement] = []
 
@@ -170,9 +180,10 @@ def presents_can_fit(
         mask = placement.mask_function()
         placement_area ^= mask
 
-        # lower counter, replace present with zeros if at 0
+        # lower counter
         present_count[placement.present_idx] -= 1
 
+        # if present counter at 0, set present to 0s so it won't be selected
         if present_count[placement.present_idx] == 0:
             present_matrices[placement.present_idx] = np.zeros(
                 (3, 3), np.uint8)
@@ -184,7 +195,7 @@ def day12(present_matrices: PresentMatrices, placement_info: list[str, str, list
     """ Main function """
     fit_count = 0
 
-    for width_str, height_str, present_count in placement_info:
+    for width_str, height_str, present_count in tqdm(placement_info):
         height, width = int(height_str), int(width_str)
         placement_area = []
         for _ in range(height):
@@ -203,7 +214,7 @@ def day12(present_matrices: PresentMatrices, placement_info: list[str, str, list
 
 if __name__ == "__main__":
     raw_lines = []
-    with open("inputs/day12/testinput.txt", encoding="UTF-8") as f:
+    with open("inputs/day12/input.txt", encoding="UTF-8") as f:
         raw_lines = f.readlines()
     FULL_TEXT = " ".join(raw_lines)
 
