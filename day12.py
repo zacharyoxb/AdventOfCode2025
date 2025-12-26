@@ -32,21 +32,6 @@ def get_all_orientations(present_matrix: PresentMatrix):
             for orientation in orientations]
 
 
-def get_windows(matrix: PlacementArea, window_shape: tuple[int, int]) -> PlacementArea:
-    """ Get an array of windows into matrix, padding with 1s """
-    # pad
-    padded = np.pad(matrix, pad_width=1,
-                    mode='constant', constant_values=1)
-
-    # make windows into padded array
-    windows = stride_tricks.sliding_window_view(padded, window_shape)
-
-    # reshape
-    windows = windows.reshape(-1, 3, 3)
-
-    return windows
-
-
 def get_matrix_mask(matrix: PresentMatrix, area_shape: tuple[int, int], x: int, y: int):
     """ Pad the matrix to the size of area_shape,
       with the matrix at point x, y in the padded matrix. """
@@ -78,39 +63,36 @@ def find_best_placement(placement_area: PlacementArea,
         return None
 
     # get padded placement_area
-    windows = get_windows(placement_area, present_matrix.shape)
+    padded = np.pad(placement_area, pad_width=1,
+                    mode='constant', constant_values=1)
 
-    # list for all possible placements
-    placements: list[tuple[int, Callable]] = []
+    rows, cols = placement_area.shape
 
-    # check for best matches
-    for nwindow, window in enumerate(windows):
-        # if the present overlaps, skip this loop
-        if np.any(window & present_matrix):
-            continue
+    best_score = -1
+    best_x, best_y = -1, -1
 
-        # Get score representing how good placement is (all 1s is perfect match)
-        score = np.sum(window ^ present_matrix)
+    # Iterate through all possible centre positions
+    for x in range(rows):
+        for y in range(cols):
+            window = padded[x:x+3, y:y+3]
 
-        # Get the coords of the centre of the window
-        cols = placement_area.shape[1]
-        x = nwindow // cols
-        y = nwindow % cols
+            if np.any(window & present_matrix):
+                continue
 
-        # We only need to call the function of the best placement
-        def mask_call(x=x, y=y):
-            return get_matrix_mask(
-                present_matrix, placement_area.shape, x, y)
+            # Compute score (max score is 9 for 3x3 grid)
+            score = 9 - np.count_nonzero(window == 0)
 
-        placements.append((score, mask_call))
+            if score > best_score:
+                best_score = score
+                best_x, best_y = x, y
 
-    # No matches
-    if not placements:
+    if best_score == -1:
         return None
 
-    best = max(placements, key=lambda pair: pair[0])
+    def mask_call():
+        return get_matrix_mask(present_matrix, (rows, cols), best_x, best_y)
 
-    return best
+    return best_score, mask_call
 
 
 @dataclass
@@ -214,7 +196,7 @@ def day12(present_matrices: PresentMatrices, placement_info: list[str, str, list
 
 if __name__ == "__main__":
     raw_lines = []
-    with open("inputs/day12/input.txt", encoding="UTF-8") as f:
+    with open("inputs/day12/testinput.txt", encoding="UTF-8") as f:
         raw_lines = f.readlines()
     FULL_TEXT = " ".join(raw_lines)
 
