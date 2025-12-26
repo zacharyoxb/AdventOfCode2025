@@ -33,23 +33,31 @@ def get_all_orientations(present_matrix: PresentMatrix):
 
 
 def get_matrix_mask(matrix: PresentMatrix, area_shape: tuple[int, int], x: int, y: int):
-    """ Pad the matrix to the size of area_shape,
-      with the matrix at point x, y in the padded matrix. """
+    """ Create a mask by placing matrix in a larger array at position (x, y). """
+    mask = np.zeros(area_shape, dtype=matrix.dtype)
 
-    # Gets padding needed before x / y
-    before_x, before_y = x-1, y-1
+    height, width = matrix.shape
+    target_h, target_w = area_shape
 
-    # Target length minus length of matrix and padding length
-    after_x = area_shape[0] - matrix.shape[0] - before_x
-    after_y = area_shape[1] - matrix.shape[1] - before_y
+    # Calculate slice boundaries (clamp to bounds)
+    start_x = max(0, x - 1)
+    end_x = min(target_h, start_x + height)
 
-    padded = np.pad(
-        matrix, (
-            (before_x, after_x),
-            (before_y, after_y)
-        )
-    )
-    return padded
+    start_y = max(0, y - 1)
+    end_y = min(target_w, start_y + width)
+
+    # Adjust matrix slice if needed (when near edges)
+    matrix_start_x = max(0, 1 - x)
+    matrix_start_y = max(0, 1 - y)
+
+    matrix_end_x = min(height, height - (start_x + height - target_h))
+    matrix_end_y = min(width, width - (start_y + width - target_w))
+
+    # Place matrix slice
+    mask[start_x:end_x, start_y:end_y] = \
+        matrix[matrix_start_x:matrix_end_x, matrix_start_y:matrix_end_y]
+
+    return mask
 
 
 def find_best_placement(placement_area: PlacementArea,
@@ -71,7 +79,7 @@ def find_best_placement(placement_area: PlacementArea,
     best_score = -1
     best_x, best_y = -1, -1
 
-    # Iterate through all possible centre positions
+    # Iterate through centre positions
     for x in range(rows):
         for y in range(cols):
             window = padded[x:x+3, y:y+3]
