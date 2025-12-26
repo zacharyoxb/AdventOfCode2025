@@ -23,7 +23,6 @@ class Placement:
 def find_best_placement(placement_area: int,
                         area_size: tuple[int, int],
                         present: int,
-                        failed_pos_cache: set[int, int]
                         ) -> Optional[Placement]:
     """ Gets best fitting placement for present_matrix if possible
     Returns the score of the mask and the mask of the present if successful
@@ -32,7 +31,6 @@ def find_best_placement(placement_area: int,
         placement_area (int): binary number representing the space of the area
         area_size (tuple[int, int]): width, height of the placement area
         present (int): int representing the dimensions of the present in binary
-        failed_pos_cache (set[int, int]): set storing failed fitting attempts
 
     Returns:
         Optional[Placement]: If not None, best possible placement of present.
@@ -46,10 +44,6 @@ def find_best_placement(placement_area: int,
     window_mask = 0x1FF  # 111111111 in binary
 
     for i in range(width * height):
-        # check cache first
-        if (i, present) in failed_pos_cache:
-            continue
-
         # get window
         window = placement_area >> i
         # trim off irrelevant digits
@@ -57,7 +51,6 @@ def find_best_placement(placement_area: int,
 
         # collision detected
         if present & window:
-            failed_pos_cache.add((i, present))
             continue
 
         # Compute score (max score is 9 for 3x3 grid)
@@ -92,15 +85,12 @@ def presents_can_fit(
 ):
     """ Checks if all presents can fit in area. """
 
-    # If any of counts are 0, replace matrix with 0s
+    # If any of counts are 0, replace ints with a 0
     orientations = [orientation if present_count[i] >
                     0 else [0] for i, orientation in enumerate(orientations)]
 
     area = 0
     height, width = area_size
-
-    # make cache to store failed fits
-    failed_pos_cache = set()
 
     while sum(present_count) > 0:
         best_present_idx = -1
@@ -114,7 +104,7 @@ def presents_can_fit(
 
             for orientation in present_orientations:
                 placement = find_best_placement(
-                    area, area_size, orientation, failed_pos_cache)
+                    area, area_size, orientation)
 
                 # if present doesn't fit
                 if not placement:
@@ -192,7 +182,7 @@ def day12(present_matrices: list[list[int]], placement_info: list[str, str, list
 
 if __name__ == "__main__":
     raw_lines = []
-    with open("inputs/day12/testinput.txt", encoding="UTF-8") as f:
+    with open("inputs/day12/input.txt", encoding="UTF-8") as f:
         raw_lines = f.readlines()
     FULL_TEXT = " ".join(raw_lines)
 
