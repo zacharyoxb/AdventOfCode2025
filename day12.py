@@ -5,7 +5,6 @@ import re
 from typing import Callable, Optional, TypeAlias
 import numpy as np
 from numpy.typing import NDArray
-from numpy.lib import stride_tricks
 from tqdm import tqdm
 
 PlacementArea: TypeAlias = NDArray[np.int8]
@@ -204,7 +203,7 @@ def day12(present_matrices: PresentMatrices, placement_info: list[str, str, list
 
 if __name__ == "__main__":
     raw_lines = []
-    with open("inputs/day12/testinput.txt", encoding="UTF-8") as f:
+    with open("inputs/day12/input.txt", encoding="UTF-8") as f:
         raw_lines = f.readlines()
     FULL_TEXT = " ".join(raw_lines)
 
