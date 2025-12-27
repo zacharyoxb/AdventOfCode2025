@@ -50,7 +50,7 @@ def find_best_placement(placement_area: int,
 
     for i in range(width * height):
         # skip loop if 3x3 square with centre i overlaps horizontal boundary
-        if (i % width) == 0 or (i % width) == width-1:
+        if (i % width) == 0 or ((i+1) % width) == 0:
             continue
 
         # skip loop if 3x3 square with centre i overlaps vertical boundary
@@ -81,7 +81,7 @@ def find_best_placement(placement_area: int,
 
         # If score is 9, immediately return
         if score == 9:
-            return Placement(score, best_bitmask)
+            return Placement(score, bitmask)
 
         if score > best_score:
             best_score = score
@@ -116,6 +116,7 @@ def presents_can_fit(
             if present_orientations == [0]:
                 continue
 
+            # all orientations for single present
             for present_orientation in present_orientations:
                 placement = find_best_placement(
                     area, area_size, present_orientation)
@@ -124,6 +125,7 @@ def presents_can_fit(
                 if not placement:
                     continue
 
+                # if placement is better than best
                 if best_placement is None or placement.score > best_placement.score:
                     best_present_idx = npresent
                     best_placement = placement
