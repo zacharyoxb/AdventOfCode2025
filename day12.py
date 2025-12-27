@@ -11,6 +11,8 @@ from tqdm import tqdm
 PresentMatrix: TypeAlias = NDArray[np.int8]
 PresentMatrices: TypeAlias = list[NDArray[np.int8]]
 
+PresentOrientation: TypeAlias = list[int]
+
 WINDOW_ROW_MASK = 0x7  # 111 in binary
 
 
@@ -18,35 +20,31 @@ WINDOW_ROW_MASK = 0x7  # 111 in binary
 class Placement:
     """ Represents a placement of a present. """
     score: int
-    bitmask: int
+    bitmask: PresentOrientation
+    bitmask_range: tuple[int, int]
 
 
-def find_best_placement(placement_area: int,
+def find_best_placement(placement_area: list[int],
                         area_size: tuple[int, int],
-                        present: int,
+                        present: PresentOrientation,
                         ) -> Optional[Placement]:
     """ Gets best fitting placement for present_matrix if possible
     Returns the score of the mask and the mask of the present if successful
 
     Args:
-        placement_area (int): binary number representing the space of the area
+        placement_area (list[int]): binary numbers representing each row of area
         area_size (tuple[int, int]): width, height of the placement area
-        present (int): int representing the dimensions of the present in binary
+        present (PresentOrientation): list of ints representing each present row
 
     Returns:
         Optional[Placement]: If not None, best possible placement of present.
-
-
-    Extracting windows (w = width):
-    [i-w-1, i-w, i-w+1]
-    [i-1,    i,    i+1]
-    [i+w-1, i+w, i+w+1]
     """
 
     width, height = area_size
 
     best_score = -1
-    best_bitmask = 0
+    best_bitmask = []
+    best_bitmask_range = (-1, -1)
 
     for i in range(width * height):
         # skip loop if 3x3 square with centre i overlaps horizontal boundary
@@ -58,53 +56,55 @@ def find_best_placement(placement_area: int,
             continue
 
         # get 3 rows from window with i in centre
-        window = 0
-        for row_offset in range(-width, width+1, width):
-            window = window << 3
-            shift = (i-1) + row_offset
-            window |= (placement_area >> shift) & WINDOW_ROW_MASK
+        window: list[int] = []
+        row_idx = i // width
+        for row in range(row_idx-1, row_idx+2):
+            shift = (i-1) % width
+            window.append((placement_area[row] >> shift) & WINDOW_ROW_MASK)
 
-        # collision detected
-        if present & window:
+        # if any collisions exist
+        if any(map(lambda pair: pair[0] & pair[1], zip(present, window))):
             continue
 
         # Compute score (max score is 9 for 3x3 grid)
-        score = bin(present ^ window).count('1')
+        score = 0
+        for present_row, window_row in zip(present, window):
+            score += bin(present_row ^ window_row).count('1')
 
-        # if score is 9 or score is more than best score, make mask
-        bitmask = 0
-        if score == 9 or score > best_score:
-            for row_offset in range(-width, width+1, width):
-                shift = (i-1) + row_offset
-                bitmask |= (present & WINDOW_ROW_MASK) << shift
-                present = present >> 3
+        # if score is more than best score, make mask
+        bitmask = []
+        if score > best_score:
+            for present_row, window_row in zip(present, window):
+                bitmask.append(present_row ^ window_row)
 
         # If score is 9, immediately return
         if score == 9:
-            return Placement(score, bitmask)
+            return Placement(score, bitmask, (row_idx-1, row_idx+2))
 
         if score > best_score:
             best_score = score
             best_bitmask = bitmask
+            best_bitmask_range = (row_idx-1, row_idx+2)
 
     if best_score == -1:
         return None
 
-    return Placement(best_score, best_bitmask)
+    return Placement(best_score, best_bitmask, best_bitmask_range)
 
 
 def presents_can_fit(
     area_size: tuple[int, int],
-    orientations: list[list[int]],
+    orientations: list[list[PresentOrientation]],
     present_count: list[int]
 ):
     """ Checks if all presents can fit in area. """
 
-    # If any of counts are 0, replace ints with a 0
+    # if any of present counts are 0, replace ints with a 0
     orientations = [orientation if present_count[i] >
                     0 else [0] for i, orientation in enumerate(orientations)]
 
-    area = 0
+    # one int for each row
+    area = [0] * area_size[1]
 
     while sum(present_count) > 0:
         best_present_idx = -1
@@ -135,7 +135,8 @@ def presents_can_fit(
             return False
 
         # place best present in bitboard
-        area |= best_placement.bitmask
+        for present_row, idx in enumerate(range(*best_placement.bitmask_range)):
+            area[idx] |= best_placement.bitmask[present_row]
 
         # remove from count
         present_count[best_present_idx] -= 1
@@ -145,7 +146,7 @@ def presents_can_fit(
     return True
 
 
-def get_all_orientations(present_matrix: PresentMatrix):
+def get_all_orientations(present_matrix: PresentMatrix) -> PresentMatrix:
     """ Gets all possible orientations of a present """
     # convert to np array to make rotation easier
     present_matrix = np.array(present_matrix)
@@ -168,12 +169,18 @@ def get_all_orientations(present_matrix: PresentMatrix):
 
 
 def matrix_to_bitmask(matrix):
-    """ Convert 3x3 matrix to 9-bit integer """
-    bits = 0
-    for i, val in enumerate(matrix.flatten()):
-        if val:
-            bits |= 1 << i
-    return bits
+    """ Convert 3x3 matrix to three 3-digit binary numbers (one per row) """
+    binary_rows = []
+
+    for row in matrix:
+        # Convert each row to a 3-digit binary number
+        binary_str = ''
+        for val in row:
+            binary_str += '1' if val else '0'
+
+        binary_rows.append(int(binary_str, 2))
+
+    return binary_rows
 
 
 def _get_bitmask_orientations(present_matrices: PresentMatrices) -> list[list[int]]:
