@@ -1,5 +1,6 @@
 """ Day 12 """
 
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 import re
 from typing import Callable, Optional, TypeAlias
@@ -90,7 +91,7 @@ def presents_can_fit(
                     0 else [0] for i, orientation in enumerate(orientations)]
 
     area = 0
-    height, width = area_size
+    _, width = area_size
 
     while sum(present_count) > 0:
         best_present_idx = -1
@@ -110,7 +111,7 @@ def presents_can_fit(
                 if not placement:
                     continue
 
-                if best_placement == None or placement.score > best_placement.score:
+                if best_placement is None or placement.score > best_placement.score:
                     best_present_idx = npresent
                     best_placement = placement
 
@@ -152,7 +153,7 @@ def get_all_orientations(present_matrix: PresentMatrix):
     return reshaped
 
 
-def get_bitmask_orientations(present_matrices: PresentMatrices) -> list[list[int]]:
+def _get_bitmask_orientations(present_matrices: PresentMatrices) -> list[list[int]]:
     """ Gets bitmask representations of all unique orientations of matrixes"""
     # get bitmask representations for orientations of presents
     orientations: list[int] = []
@@ -163,21 +164,45 @@ def get_bitmask_orientations(present_matrices: PresentMatrices) -> list[list[int
     return orientations
 
 
+def _process_task(args):
+    return presents_can_fit(*args)
+
+
+def _get_args(present_matrices: list[list[int]],
+              placement_info: list[str, str, list[int]]
+              ):
+    args = []
+    for width_str, height_str, present_count_str in placement_info:
+        height, width = int(height_str), int(width_str)
+        orientations = _get_bitmask_orientations(present_matrices)
+        present_count_str = present_count_str.split()
+        present_count = list(map(int, present_count_str))
+        args.append(((height, width), orientations, present_count))
+    return args
+
+
 def day12(present_matrices: list[list[int]], placement_info: list[str, str, list[int]]):
     """ Main function """
     fit_count = 0
+    tasks: list[Callable[[], bool]] = []
 
-    for width_str, height_str, present_count_str in tqdm(placement_info):
-        height, width = int(height_str), int(width_str)
-        orientations = get_bitmask_orientations(present_matrices)
-        present_count_str = present_count_str.split()
-        present_count = list(map(int, present_count_str))
+    args_list = _get_args(present_matrices, placement_info)
 
-        if presents_can_fit(
-                (height, width), orientations, present_count):
-            fit_count += 1
+    with ProcessPoolExecutor() as executor:
+        futures = [executor.submit(_process_task, args) for args in args_list]
 
-    print(fit_count)
+        with tqdm(total=len(tasks)) as pbar:
+            for future in as_completed(futures):
+                try:
+                    if future.result():
+                        fit_count += 1
+                except TimeoutError as e:
+                    print(f"Timeout error! {e}")
+                finally:
+                    pbar.update(1)
+
+    print(
+        f"All iterations complete, total areas which fit all presents: {fit_count}")
 
 
 if __name__ == "__main__":
