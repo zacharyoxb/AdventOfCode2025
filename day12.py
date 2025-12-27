@@ -210,7 +210,7 @@ def day12(present_matrices: list[list[int]], placement_info: list[str, str, list
 
     args_list = _get_args(present_matrices, placement_info)
 
-    with ProcessPoolExecutor(1) as executor:
+    with ProcessPoolExecutor() as executor:
         futures = [executor.submit(_process_task, args) for args in args_list]
 
         with tqdm(total=len(futures)) as pbar:
