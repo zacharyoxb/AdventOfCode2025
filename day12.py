@@ -57,6 +57,11 @@ def find_best_placement(placement_area: int,
         # Compute score (max score is 9 for 3x3 grid)
         score = bin(present ^ window).count('1')
 
+        # If score is 9, immediately return
+        if score == 9:
+            bitmask = present << i
+            return Placement(score, bitmask, i // width, i % width)
+
         if score > best_score:
             best_score = score
             best_x, best_y = i // width, i % width
@@ -64,7 +69,6 @@ def find_best_placement(placement_area: int,
     if best_score == -1:
         return None
 
-    # construct bitmask
     bitmask = present << i
 
     return Placement(best_score, bitmask, best_x, best_y)
@@ -207,7 +211,7 @@ def day12(present_matrices: list[list[int]], placement_info: list[str, str, list
 
 if __name__ == "__main__":
     raw_lines = []
-    with open("inputs/day12/input.txt", encoding="UTF-8") as f:
+    with open("inputs/day12/testinput.txt", encoding="UTF-8") as f:
         raw_lines = f.readlines()
     FULL_TEXT = " ".join(raw_lines)
 
@@ -225,7 +229,7 @@ if __name__ == "__main__":
         extracted_present_matrices.append(binary_matrix)
 
     # get all areas we will insert into and indexes of shapes
-    REGION_PATTERN = r'(\d+)x(\d+):\s*((?:\d+\s*)+\n)'
+    REGION_PATTERN = r'(\d+)x(\d+):\s*((?:\d+\s*)+)(?=\n|$)'
     region_matches = re.findall(REGION_PATTERN, FULL_TEXT)
 
     day12(extracted_present_matrices, region_matches)
