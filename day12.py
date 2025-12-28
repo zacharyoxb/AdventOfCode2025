@@ -14,19 +14,175 @@ PresentMatrices: TypeAlias = list[NDArray[np.int8]]
 PresentOrientation: TypeAlias = list[int]
 
 WINDOW_ROW_MASK = 0x7  # 111 in binary
+L_WINDOW_CELL = 0x4  # 100 in binary
+R_WINDOW_CELL = 0x1  # 001 in binary
 
 
 @dataclass
 class Placement:
     """ Represents a placement of a present. """
-    score: int
+    score: float
     bitmask: PresentOrientation
     bitmask_range: tuple[int, int]
 
 
+def _window_out_of_bounds(i: int, width: int, height: int) -> bool:
+    # skip loop if 3x3 square with centre i overlaps horizontal boundary
+    if (i % width) == 0 or ((i+1) % width) == 0:
+        return True
+
+    # skip loop if 3x3 square with centre i overlaps vertical boundary
+    if (i // width) == 0 or (i // width) == height-1:
+        return True
+    return False
+
+
+def _get_window(placement_area: list[int], i: int, width: int) -> list[int]:
+    # get 3 rows from window with i in centre
+    window: list[int] = []
+    top_row_idx = (i // width) - 1
+    bottom_row_idx = (i // width) + 1
+    for row in range(top_row_idx, bottom_row_idx+1):
+        shift = (i-1) % width
+        window.append((placement_area[row] >> shift) & WINDOW_ROW_MASK)
+    return window
+
+
+def _get_vertical_adjacency_score(
+        placement_area: list[int],
+        i: int,
+        width: int,
+        present: PresentOrientation
+) -> float:
+    adjacent_cells = 0
+
+    adj_idx = (i // width) - 2, (i // width) + 2
+    shift = (i-1) % width
+
+    # get vertically adjacent points above top (MASK if out of bounds)
+    top_adjacent = WINDOW_ROW_MASK
+    if adj_idx[0] > -1:
+        top_adjacent = (placement_area[adj_idx[0]]
+                        >> shift) & WINDOW_ROW_MASK
+    adjacent_cells += bin(top_adjacent & present[0]).count('1')
+
+    # get vertically adjacent points below bottom (MASK if out of bounds)
+    adj_mask = WINDOW_ROW_MASK
+    if adj_idx[1] < len(placement_area):
+        adj_mask = (
+            placement_area[adj_idx[1]] >> shift) & WINDOW_ROW_MASK
+    adjacent_cells += bin(adj_mask & present[2]).count('1')
+
+    return adjacent_cells / 10
+
+
+def _get_horizontal_adjacency_score(
+        placement_area: list[int],
+        i: int,
+        width: int,
+        present: PresentOrientation
+) -> float:
+    adj_idx = (i // width) - 1, (i // width), (i // width) + 1
+    l_shift = (i-1) % width
+    r_shift = (i+1) % width
+
+    adj_to_left_boundary = ((i % width) - 2) < 0
+    adj_to_right_boundary = ((i % width) + 2) >= width
+
+    adjacent_cells = 0
+
+    # for every index in horizontal adj idx
+    for nrow, idx in enumerate(adj_idx):
+        left_window_cell = present[nrow] & L_WINDOW_CELL
+        right_window_cell = present[nrow] & R_WINDOW_CELL
+
+        # check if adjacent to boundary/present on the left side
+        if adj_to_left_boundary and left_window_cell:
+            adjacent_cells += 1
+        elif not adj_to_left_boundary:
+            if (placement_area[idx] >> l_shift-1) & 1 and left_window_cell:
+                adjacent_cells += 1
+
+        # check if adjacent to boundary/present on the right side
+        if adj_to_right_boundary and right_window_cell:
+            adjacent_cells += 1
+        elif not adj_to_right_boundary:
+            if (placement_area[idx] >> r_shift+1) & 1 and right_window_cell:
+                adjacent_cells += 1
+    return adjacent_cells / 10
+
+
+def _get_adjacency_score(
+        placement_area: list[int],
+        i: int,
+        width: int,
+        present: PresentOrientation
+) -> float:
+    adjacent_cells = 0
+
+    adjacent_cells += _get_vertical_adjacency_score(
+        placement_area, i, width, present)
+
+    adjacent_cells += _get_horizontal_adjacency_score(
+        placement_area, i, width, present)
+
+    return adjacent_cells
+
+
+def _get_valid_orientations(
+        current_orientations: list[PresentOrientation],
+        window: PresentOrientation) -> list[PresentOrientation]:
+    valid_orientations = []
+    for orientation in current_orientations:
+        # Check if orientation doesn't overlap with window
+        if not any(orientation_part & window_part
+                   for orientation_part, window_part in zip(orientation, window)):
+            valid_orientations.append(orientation)
+    return valid_orientations
+
+
+def _get_best_orientation(
+        placement_area: list[int],
+        i: int,
+        width: int,
+        orientations: list[PresentOrientation],
+        window: PresentOrientation
+) -> tuple[int, PresentOrientation]:
+    """ Gets best orientation based on score. The score consists of two things:
+        1. Amount of 1s in xor of window and orientation. This is the same regardless
+           of orientation and consistent with each present. This is more important so
+           each 1 adds 1 to the score
+        2. Amount of non empty cells / boundaries touched by the shape. Less important
+            so only adds .1 to the score
+    """
+    base_score = 0
+    best_adj_score = -1
+    best_orientation = None
+
+    # adds 1 based on xor (same for all orientations)
+    for present_row, window_row in zip(orientations[0], window):
+        base_score += bin(present_row ^ window_row).count('1')
+
+    # get adjacency score, add to score
+    for orientation in orientations:
+        adj_score = _get_adjacency_score(placement_area, i, width, orientation)
+        if adj_score > best_adj_score:
+            best_adj_score = adj_score
+            best_orientation = orientation
+
+    # make bitmask of best orientation
+    bitmask = []
+    for present_row, window_row in zip(best_orientation, window):
+        bitmask.append(present_row ^ window_row)
+
+    score = base_score + best_adj_score
+
+    return score, bitmask
+
+
 def find_best_placement(placement_area: list[int],
                         area_size: tuple[int, int],
-                        present: PresentOrientation,
+                        orientations: list[PresentOrientation],
                         ) -> Optional[Placement]:
     """ Gets best fitting placement for present_matrix if possible
     Returns the score of the mask and the mask of the present if successful
@@ -34,7 +190,8 @@ def find_best_placement(placement_area: list[int],
     Args:
         placement_area (list[int]): binary numbers representing each row of area
         area_size (tuple[int, int]): width, height of the placement area
-        present (PresentOrientation): list of ints representing each present row
+        present (list[PresentOrientation]): list of list of ints representing each 
+            present orientation row
 
     Returns:
         Optional[Placement]: If not None, best possible placement of present.
@@ -47,44 +204,28 @@ def find_best_placement(placement_area: list[int],
     best_bitmask_range = (-1, -1)
 
     for i in range(width * height):
-        # skip loop if 3x3 square with centre i overlaps horizontal boundary
-        if (i % width) == 0 or ((i+1) % width) == 0:
-            continue
-
-        # skip loop if 3x3 square with centre i overlaps vertical boundary
-        if (i // width) == 0 or (i // width) == height-1:
+        if _window_out_of_bounds(i, width, height):
             continue
 
         # get 3 rows from window with i in centre
-        window: list[int] = []
-        row_idx = i // width
-        for row in range(row_idx-1, row_idx+2):
-            shift = (i-1) % width
-            window.append((placement_area[row] >> shift) & WINDOW_ROW_MASK)
+        window: list[int] = _get_window(placement_area, i, width)
 
-        # if any collisions exist
-        if any(map(lambda pair: pair[0] & pair[1], zip(present, window))):
+        # get orientations without collisions
+        valid_orientations = _get_valid_orientations(orientations, window)
+
+        # if no orientation can fit
+        if not valid_orientations:
             continue
 
-        # Compute score (max score is 9 for 3x3 grid)
-        score = 0
-        for present_row, window_row in zip(present, window):
-            score += bin(present_row ^ window_row).count('1')
+        # get best orientation
+        score, bitmask = _get_best_orientation(
+            placement_area, i, width, orientations, window)
 
-        # if score is more than best score, make mask
-        bitmask = []
-        if score > best_score:
-            for present_row, window_row in zip(present, window):
-                bitmask.append(present_row ^ window_row)
-
-        # If score is 9, immediately return
-        if score == 9:
-            return Placement(score, bitmask, (row_idx-1, row_idx+2))
-
+        # update best score
         if score > best_score:
             best_score = score
             best_bitmask = bitmask
-            best_bitmask_range = (row_idx-1, row_idx+2)
+            best_bitmask_range = (i//width-1, i//width+2)
 
     if best_score == -1:
         return None
@@ -99,10 +240,6 @@ def presents_can_fit(
 ):
     """ Checks if all presents can fit in area. """
 
-    # if any of present counts are 0, replace ints with a 0
-    orientations = [orientation if present_count[i] >
-                    0 else [0] for i, orientation in enumerate(orientations)]
-
     # one int for each row
     area = [0] * area_size[1]
 
@@ -110,25 +247,23 @@ def presents_can_fit(
         best_present_idx = -1
         best_placement: Placement = None
 
-        # check every orientation of every present
+        # check each present to see if it fits
         for npresent, present_orientations in enumerate(orientations):
-            # no more of this present to place
-            if present_orientations == [0]:
+            # if count for this present is 0
+            if present_count[npresent] == 0:
                 continue
 
-            # all orientations for single present
-            for present_orientation in present_orientations:
-                placement = find_best_placement(
-                    area, area_size, present_orientation)
+            placement = find_best_placement(
+                area, area_size, present_orientations)
 
-                # if present doesn't fit
-                if not placement:
-                    continue
+            # if present doesn't fit
+            if not placement:
+                continue
 
-                # if placement is better than best
-                if best_placement is None or placement.score > best_placement.score:
-                    best_present_idx = npresent
-                    best_placement = placement
+            # if placement is better than best
+            if best_placement is None or placement.score > best_placement.score:
+                best_present_idx = npresent
+                best_placement = placement
 
         # if no fits found, return false
         if best_present_idx == -1:
@@ -138,10 +273,8 @@ def presents_can_fit(
         for present_row, idx in enumerate(range(*best_placement.bitmask_range)):
             area[idx] |= best_placement.bitmask[present_row]
 
-        # remove from count
+        # reduce count
         present_count[best_present_idx] -= 1
-        if present_count[best_present_idx] == 0:
-            orientations[best_present_idx] = [0]
 
     return True
 
@@ -217,7 +350,11 @@ def day12(present_matrices: list[list[int]], placement_info: list[str, str, list
 
     args_list = _get_args(present_matrices, placement_info)
 
-    with ProcessPoolExecutor() as executor:
+    # _process_task(args_list[0])
+    # _process_task(args_list[1])
+    # _process_task(args_list[2])
+
+    with ProcessPoolExecutor(1) as executor:
         futures = [executor.submit(_process_task, args) for args in args_list]
 
         with tqdm(total=len(futures)) as pbar:
