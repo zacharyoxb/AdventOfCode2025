@@ -48,85 +48,45 @@ def _get_window(placement_area: list[int], i: int, width: int) -> list[int]:
     return window
 
 
-def _get_vertical_adjacency_score(
-        placement_area: list[int],
-        i: int,
-        width: int,
-        present: PresentOrientation
-) -> float:
-    adjacent_cells = 0
-
-    adj_idx = (i // width) - 2, (i // width) + 2
-    shift = (i-1) % width
-
-    # get vertically adjacent points above top (MASK if out of bounds)
-    top_adjacent = WINDOW_ROW_MASK
-    if adj_idx[0] > -1:
-        top_adjacent = (placement_area[adj_idx[0]]
-                        >> shift) & WINDOW_ROW_MASK
-    adjacent_cells += bin(top_adjacent & present[0]).count('1')
-
-    # get vertically adjacent points below bottom (MASK if out of bounds)
-    adj_mask = WINDOW_ROW_MASK
-    if adj_idx[1] < len(placement_area):
-        adj_mask = (
-            placement_area[adj_idx[1]] >> shift) & WINDOW_ROW_MASK
-    adjacent_cells += bin(adj_mask & present[2]).count('1')
-
-    return adjacent_cells / 10
-
-
-def _get_horizontal_adjacency_score(
-        placement_area: list[int],
-        i: int,
-        width: int,
-        present: PresentOrientation
-) -> float:
-    adj_idx = (i // width) - 1, (i // width), (i // width) + 1
-    l_shift = (i-1) % width
-    r_shift = (i+1) % width
-
-    adj_to_left_boundary = ((i % width) - 2) < 0
-    adj_to_right_boundary = ((i % width) + 2) >= width
-
-    adjacent_cells = 0
-
-    # for every index in horizontal adj idx
-    for nrow, idx in enumerate(adj_idx):
-        left_window_cell = present[nrow] & L_WINDOW_CELL
-        right_window_cell = present[nrow] & R_WINDOW_CELL
-
-        # check if adjacent to boundary/present on the left side
-        if adj_to_left_boundary and left_window_cell:
-            adjacent_cells += 1
-        elif not adj_to_left_boundary:
-            if (placement_area[idx] >> l_shift-1) & 1 and left_window_cell:
-                adjacent_cells += 1
-
-        # check if adjacent to boundary/present on the right side
-        if adj_to_right_boundary and right_window_cell:
-            adjacent_cells += 1
-        elif not adj_to_right_boundary:
-            if (placement_area[idx] >> r_shift+1) & 1 and right_window_cell:
-                adjacent_cells += 1
-    return adjacent_cells / 10
-
-
 def _get_adjacency_score(
         placement_area: list[int],
         i: int,
         width: int,
         present: PresentOrientation
 ) -> float:
-    adjacent_cells = 0
+    window_points = []
+    for row in present:
+        split_row = list(bin(row)[2:])
+        window_points.append(split_row)
 
-    adjacent_cells += _get_vertical_adjacency_score(
-        placement_area, i, width, present)
+    pos_offset = [
+        [width-1, width, width+1],
+        [1,         0,         1],
+        [width-1, width, width+1]
+    ]
 
-    adjacent_cells += _get_horizontal_adjacency_score(
-        placement_area, i, width, present)
+    occupied_adj_cells = 0
 
-    return adjacent_cells
+    # for every occupied point in present
+    for nrow, row_cells in enumerate(window_points):
+        for ncol, col_cell in enumerate(row_cells):
+            # if cell is not occupied
+            if col_cell == '0':
+                continue
+
+            # get cell pos in placement area
+            cell_pos = i + pos_offset[nrow][ncol]
+
+            # for every adjacent cell
+            for offset in [offset for row in pos_offset for offset in row]:
+                if offset == 0:
+                    continue
+                adj_pos = cell_pos + offset
+                height = adj_pos // width
+                shift = adj_pos % width
+
+                occupied_adj_cells += ((placement_area[height]) >> shift) & 1
+    return occupied_adj_cells
 
 
 def _get_valid_orientations(
@@ -149,35 +109,44 @@ def _get_best_orientation(
         window: PresentOrientation
 ) -> tuple[int, PresentOrientation]:
     """ Gets best orientation based on score. The score consists of two things:
-        1. Amount of 1s in xor of window and orientation. This is the same regardless
-           of orientation and consistent with each present. This is more important so
-           each 1 adds 1 to the score
+        1. Amount of 1s in xor of window and orientation.
         2. Amount of non empty cells / boundaries touched by the shape. Less important
             so only adds .1 to the score
     """
-    base_score = 0
-    best_adj_score = -1
+
+    best_total_score = -1.0
     best_orientation = None
 
-    # adds 1 based on xor (same for all orientations)
-    for present_row, window_row in zip(orientations[0], window):
-        base_score += bin(present_row ^ window_row).count('1')
-
-    # get adjacency score, add to score
     for orientation in orientations:
+        # calculate and normalise xor score
+        xor_score = 0
+        for present_row, window_row in zip(orientation, window):
+            xor_score += bin(present_row ^ window_row).count('1')
+
+        max_xor = 9
+        norm_xor = xor_score / max_xor
+
+        # calculate and normalise adjacency score
         adj_score = _get_adjacency_score(placement_area, i, width, orientation)
-        if adj_score > best_adj_score:
-            best_adj_score = adj_score
+        max_adj = 12  # 12 adj squares total with a 3x3 window
+        norm_adj = adj_score / max_adj
+
+        # weighted combination
+        total_score = (
+            norm_xor * 0.6 +   # Fill empty space
+            norm_adj * 0.3     # Compactness
+        )
+
+        if total_score > best_total_score:
+            best_total_score = total_score
             best_orientation = orientation
 
     # make bitmask of best orientation
     bitmask = []
     for present_row, window_row in zip(best_orientation, window):
-        bitmask.append(present_row ^ window_row)
+        bitmask.append((present_row ^ window_row) << (i-1) % width)
 
-    score = base_score + best_adj_score
-
-    return score, bitmask
+    return best_total_score * 100, bitmask
 
 
 def find_best_placement(placement_area: list[int],
@@ -350,25 +319,27 @@ def day12(present_matrices: list[list[int]], placement_info: list[str, str, list
 
     args_list = _get_args(present_matrices, placement_info)
 
-    # _process_task(args_list[0])
-    # _process_task(args_list[1])
-    # _process_task(args_list[2])
+    task1 = _process_task(args_list[0])
+    task2 = _process_task(args_list[1])
+    task3 = _process_task(args_list[2])
 
-    with ProcessPoolExecutor(1) as executor:
-        futures = [executor.submit(_process_task, args) for args in args_list]
+    print(f"task1: {task1}, task2: {task2}, task3: {task3}")
 
-        with tqdm(total=len(futures)) as pbar:
-            for future in as_completed(futures):
-                try:
-                    if future.result():
-                        fit_count += 1
-                except TimeoutError as e:
-                    print(f"Timeout error! {e}")
-                finally:
-                    pbar.update(1)
+    # with ProcessPoolExecutor(1) as executor:
+    #     futures = [executor.submit(_process_task, args) for args in args_list]
 
-    print(
-        f"All iterations complete, total areas which fit all presents: {fit_count}")
+    #     with tqdm(total=len(futures)) as pbar:
+    #         for future in as_completed(futures):
+    #             try:
+    #                 if future.result():
+    #                     fit_count += 1
+    #             except TimeoutError as e:
+    #                 print(f"Timeout error! {e}")
+    #             finally:
+    #                 pbar.update(1)
+
+    # print(
+    #     f"All iterations complete, total areas which fit all presents: {fit_count}")
 
 
 if __name__ == "__main__":
