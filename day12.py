@@ -32,8 +32,8 @@ def _point_cannot_fit(i: int, original_i: int, width: int, height: int) -> bool:
     # if point i passes vertical boundary
     if (i < 0) or (i // width) > height-1:
         return True
-    # if point i is on a different x and y to original i
-    if (i // width) != (original_i // width) and (i % width) != (original_i % width):
+    # if point i is not on the same line as original
+    if ((original_i // width) != (i // width)) and ((original_i % width) != (i % width)):
         return True
     return False
 
@@ -92,8 +92,9 @@ def _get_adjacency_score(
         window_i: int,
         area_size: tuple[int, int],
         present: PresentOrientation
-) -> float:
-    adj_score = 0
+) -> tuple[float, float]:
+    adj_to_cell_score = 0
+    adj_to_border_score = 0
     non_adj_point = 0
 
     width, height = area_size
@@ -113,19 +114,20 @@ def _get_adjacency_score(
                 continue
             # adj cell can't fit on side or on top of adj cell (edge placement)
             if _point_cannot_fit(adj_cell_idx, cell_idx, width, height):
-                adj_score += 1
+                adj_to_border_score += 1
             # otherwise if position is occupied, add 1 to score
             elif _adj_cell_is_1(placement_area, width, adj_cell_idx):
-                adj_score += 1
+                adj_to_cell_score += 1
             # add 1 to non_adj point so we can normalise
             else:
                 non_adj_point += 1
 
     # normalise
-    max_adj = adj_score + non_adj_point
-    norm_adj = adj_score / max_adj
+    max_adj = adj_to_cell_score + adj_to_border_score + non_adj_point
+    norm_to_cell_adj = adj_to_cell_score / max_adj
+    norm_to_border_adj = adj_to_border_score / max_adj
 
-    return norm_adj
+    return norm_to_cell_adj, norm_to_border_adj
 
 
 def _get_xor_score(
@@ -175,13 +177,14 @@ def _get_best_orientation(
         norm_xor = _get_xor_score(orientation, window)
 
         # get adjacency score
-        norm_adj = _get_adjacency_score(
+        norm_cell_adj, norm_border_adj = _get_adjacency_score(
             placement_area, window_i, area_size, orientation)
 
         # weighted combination
         total_score = (
-            norm_xor * 0.2 +   # Fill empty space
-            norm_adj * 0.8     # Compactness
+            norm_xor * 0.2 +       # Fill empty space
+            norm_cell_adj * 0.2 +  # Compactness (with other presents)
+            norm_border_adj * 0.6  # Compactness (with borders)
         )
 
         if total_score > best_total_score:
@@ -290,6 +293,8 @@ def presents_can_fit(
             # if count for this present is 0
             if present_count[npresent] == 0:
                 continue
+
+            # START WITH ONLY FIRST 3 ROWS OF PLACEMENT AREA, INCREASE WHEN PLACEMENT == NONE
 
             placement = find_best_placement(
                 area, area_size, present_orientations)
