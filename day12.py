@@ -28,12 +28,12 @@ class Placement:
     bitmask_range: tuple[int, int]
 
 
-def _point_out_of_bounds(i: int, width: int, height: int) -> bool:
-    # if point i passes horizontal boundary (height has increased)
-    if (i-1 // width) != (i // width):
-        return True
+def _point_cannot_fit(i: int, original_i: int, width: int, height: int) -> bool:
     # if point i passes vertical boundary
-    if (i // width) < 0 or (i // width) > height-1:
+    if (i < 0) or (i // width) > height-1:
+        return True
+    # if point i is on a different x and y to original i
+    if (i // width) != (original_i // width) and (i % width) != (original_i % width):
         return True
     return False
 
@@ -43,8 +43,9 @@ def _adj_cell_is_1(
     width: int,
     point: int
 ) -> bool:
-    # if cell at index is 0
-    return ((placement_area[point]) >> point % width) & 1
+    if placement_area[point // width] >> point % width & 1:
+        return True
+    return False
 
 
 def _all_occupied_present_cells(
@@ -93,7 +94,6 @@ def _get_adjacency_score(
         present: PresentOrientation
 ) -> float:
     adj_score = 0
-
     non_adj_point = 0
 
     width, height = area_size
@@ -111,11 +111,11 @@ def _get_adjacency_score(
             # adj cell is one of the occupied present cells
             if adj_cell_idx in cell_idxs:
                 continue
-            # adj cell is out of bounds
-            if _point_out_of_bounds(adj_cell_idx, width, height):
+            # adj cell can't fit on side or on top of adj cell (edge placement)
+            if _point_cannot_fit(adj_cell_idx, cell_idx, width, height):
                 adj_score += 1
             # otherwise if position is occupied, add 1 to score
-            elif (placement_area[adj_cell_idx // width] >> adj_cell_idx % width) & 1:
+            elif _adj_cell_is_1(placement_area, width, adj_cell_idx):
                 adj_score += 1
             # add 1 to non_adj point so we can normalise
             else:
@@ -160,10 +160,9 @@ def _get_best_orientation(
         orientations: list[PresentOrientation],
         window: PresentOrientation
 ) -> tuple[int, PresentOrientation]:
-    """ Gets best orientation based on score. The score consists of two things:
-        1. Amount of 1s in xor of window and orientation.
-        2. Amount of non empty cells / boundaries touched by the shape. Less important
-            so only adds .1 to the score
+    """ Gets best orientation based on score. The score consists of these things:
+        1. Amount of empty space filled
+        2. Amount of filled cells/boundaries shape would be adjacent to
     """
 
     width, _ = area_size
@@ -181,8 +180,8 @@ def _get_best_orientation(
 
         # weighted combination
         total_score = (
-            norm_xor * 0.6 +   # Fill empty space
-            norm_adj * 0.4     # Compactness
+            norm_xor * 0.2 +   # Fill empty space
+            norm_adj * 0.8     # Compactness
         )
 
         if total_score > best_total_score:
