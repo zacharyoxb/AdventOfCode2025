@@ -26,12 +26,23 @@ class Placement:
     bitmask_range: tuple[int, int]
 
 
+def _point_out_of_bounds(i: int, width: int, height: int) -> bool:
+    # if point i passes horizontal boundary (height has increased)
+    if (i-1 // width) != (i // width):
+        return True
+
+    # if point i passes vertical boundary
+    if (i // width) < 0 or (i // width) > height-1:
+        return True
+    return False
+
+
 def _window_out_of_bounds(i: int, width: int, height: int) -> bool:
-    # skip loop if 3x3 square with centre i overlaps horizontal boundary
+    # if 3x3 square with centre i overlaps horizontal boundary
     if (i % width) == 0 or ((i+1) % width) == 0:
         return True
 
-    # skip loop if 3x3 square with centre i overlaps vertical boundary
+    # if 3x3 square with centre i overlaps vertical boundary
     if (i // width) == 0 or (i // width) == height-1:
         return True
     return False
@@ -51,10 +62,12 @@ def _get_window(placement_area: list[int], i: int, width: int) -> list[int]:
 def _get_adjacency_score(
         placement_area: list[int],
         i: int,
-        width: int,
+        area_size: tuple[int, int],
         present: PresentOrientation
 ) -> float:
+    width, height = area_size
     window_points = []
+
     for row in present:
         split_row = list(bin(row)[2:])
         window_points.append(split_row)
@@ -77,15 +90,23 @@ def _get_adjacency_score(
             # get cell pos in placement area
             cell_pos = i + pos_offset[nrow][ncol]
 
+            flattened_offset = [offset for row in pos_offset for offset in row]
+
             # for every adjacent cell
-            for offset in [offset for row in pos_offset for offset in row]:
+            for offset in flattened_offset:
                 if offset == 0:
                     continue
                 adj_pos = cell_pos + offset
-                height = adj_pos // width
+                row_idx = adj_pos // width
                 shift = adj_pos % width
 
-                occupied_adj_cells += ((placement_area[height]) >> shift) & 1
+                # if row_idx is out of bounds, add 1
+                if _point_out_of_bounds(i, width, height):
+                    occupied_adj_cells += 1
+                else:
+                    occupied_adj_cells += (
+                        (placement_area[row_idx]) >> shift) & 1
+
     return occupied_adj_cells
 
 
@@ -104,7 +125,7 @@ def _get_valid_orientations(
 def _get_best_orientation(
         placement_area: list[int],
         i: int,
-        width: int,
+        area_size: tuple[int, int],
         orientations: list[PresentOrientation],
         window: PresentOrientation
 ) -> tuple[int, PresentOrientation]:
@@ -113,6 +134,8 @@ def _get_best_orientation(
         2. Amount of non empty cells / boundaries touched by the shape. Less important
             so only adds .1 to the score
     """
+
+    width, height = area_size
 
     best_total_score = -1.0
     best_orientation = None
@@ -127,7 +150,8 @@ def _get_best_orientation(
         norm_xor = xor_score / max_xor
 
         # calculate and normalise adjacency score
-        adj_score = _get_adjacency_score(placement_area, i, width, orientation)
+        adj_score = _get_adjacency_score(
+            placement_area, i, area_size, orientation)
         max_adj = 12  # 12 adj squares total with a 3x3 window
         norm_adj = adj_score / max_adj
 
@@ -188,7 +212,7 @@ def find_best_placement(placement_area: list[int],
 
         # get best orientation
         score, bitmask = _get_best_orientation(
-            placement_area, i, width, orientations, window)
+            placement_area, i, area_size, orientations, window)
 
         # update best score
         if score > best_score:
