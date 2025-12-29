@@ -2,8 +2,10 @@
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
+from functools import partial, reduce
+import operator
 import re
-from typing import Optional, TypeAlias
+from typing import Generator, Optional, TypeAlias
 import numpy as np
 from numpy.typing import NDArray
 from tqdm import tqdm
@@ -30,84 +32,113 @@ def _point_out_of_bounds(i: int, width: int, height: int) -> bool:
     # if point i passes horizontal boundary (height has increased)
     if (i-1 // width) != (i // width):
         return True
-
     # if point i passes vertical boundary
     if (i // width) < 0 or (i // width) > height-1:
         return True
     return False
 
 
-def _window_out_of_bounds(i: int, width: int, height: int) -> bool:
-    # if 3x3 square with centre i overlaps horizontal boundary
-    if (i % width) == 0 or ((i+1) % width) == 0:
-        return True
-
-    # if 3x3 square with centre i overlaps vertical boundary
-    if (i // width) == 0 or (i // width) == height-1:
-        return True
-    return False
+def _adj_cell_is_1(
+    placement_area: list[int],
+    width: int,
+    point: int
+) -> bool:
+    # if cell at index is 0
+    return ((placement_area[point]) >> point % width) & 1
 
 
-def _get_window(placement_area: list[int], i: int, width: int) -> list[int]:
-    # get 3 rows from window with i in centre
-    window: list[int] = []
-    top_row_idx = (i // width) - 1
-    bottom_row_idx = (i // width) + 1
-    for row in range(top_row_idx, bottom_row_idx+1):
-        shift = (i-1) % width
-        window.append((placement_area[row] >> shift) & WINDOW_ROW_MASK)
-    return window
+def _all_occupied_present_cells(
+        window_i: int,
+        window: PresentOrientation,
+        width: int
+) -> list[int]:
+    pos_offset = [
+        -width-1, -width, -width+1,
+        -1,          0,          1,
+        width-1,   width,  width+1
+    ]
+
+    # convert window to list of binary digits
+    window_bin = [list(bin(row)[2:]) for row in window]
+    # flatten
+    window_cell = [item for row in window_bin for item in row]
+
+    cell_i = []
+
+    # for every cell in window
+    for bin_digit, offset in zip(window_cell, pos_offset):
+        if bin_digit == '1':
+            cell_i.append(window_i + offset)
+    return cell_i
+
+
+def _all_adjacent_cells(
+        cell_idx: int,
+        width: int
+) -> Generator[int, None, None]:
+    pos_offset = [
+        -width-1, -width, -width+1,
+        -1,                      1,
+        width-1,   width,  width+1
+    ]
+
+    for offset in pos_offset:
+        yield cell_idx + offset
 
 
 def _get_adjacency_score(
         placement_area: list[int],
-        i: int,
+        window_i: int,
         area_size: tuple[int, int],
         present: PresentOrientation
 ) -> float:
+    adj_score = 0
+
+    non_adj_point = 0
+
     width, height = area_size
-    window_points = []
+    # Get i positions of all occupied present cells
+    cell_idxs = _all_occupied_present_cells(window_i, present, width)
 
-    for row in present:
-        split_row = list(bin(row)[2:])
-        window_points.append(split_row)
+    # If all of the 3x3 present is filled, don't check centre adjacency
+    if len(cell_idxs) == 9:
+        cell_idxs.pop(4)
 
-    pos_offset = [
-        [width-1, width, width+1],
-        [1,         0,         1],
-        [width-1, width, width+1]
-    ]
-
-    occupied_adj_cells = 0
-
-    # for every occupied point in present
-    for nrow, row_cells in enumerate(window_points):
-        for ncol, col_cell in enumerate(row_cells):
-            # if cell is not occupied
-            if col_cell == '0':
+    # Otherwise, for all cells
+    for cell_idx in cell_idxs:
+        # for cells adjacent to cell not in cells
+        for adj_cell_idx in _all_adjacent_cells(cell_idx, width):
+            # adj cell is one of the occupied present cells
+            if adj_cell_idx in cell_idxs:
                 continue
+            # adj cell is out of bounds
+            if _point_out_of_bounds(adj_cell_idx, width, height):
+                adj_score += 1
+            # otherwise if position is occupied, add 1 to score
+            elif (placement_area[adj_cell_idx // width] >> adj_cell_idx % width) & 1:
+                adj_score += 1
+            # add 1 to non_adj point so we can normalise
+            else:
+                non_adj_point += 1
 
-            # get cell pos in placement area
-            cell_pos = i + pos_offset[nrow][ncol]
+    # normalise
+    max_adj = adj_score + non_adj_point
+    norm_adj = adj_score / max_adj
 
-            flattened_offset = [offset for row in pos_offset for offset in row]
+    return norm_adj
 
-            # for every adjacent cell
-            for offset in flattened_offset:
-                if offset == 0:
-                    continue
-                adj_pos = cell_pos + offset
-                row_idx = adj_pos // width
-                shift = adj_pos % width
 
-                # if row_idx is out of bounds, add 1
-                if _point_out_of_bounds(i, width, height):
-                    occupied_adj_cells += 1
-                else:
-                    occupied_adj_cells += (
-                        (placement_area[row_idx]) >> shift) & 1
+def _get_xor_score(
+        orientation: PresentOrientation,
+        window: PresentOrientation
+) -> float:
+    xor_score = 0
+    for present_row, window_row in zip(orientation, window):
+        xor_score += bin(present_row ^ window_row).count('1')
 
-    return occupied_adj_cells
+    max_xor = 9
+    norm_xor = xor_score / max_xor
+    return norm_xor
 
 
 def _get_valid_orientations(
@@ -124,7 +155,7 @@ def _get_valid_orientations(
 
 def _get_best_orientation(
         placement_area: list[int],
-        i: int,
+        window_i: int,
         area_size: tuple[int, int],
         orientations: list[PresentOrientation],
         window: PresentOrientation
@@ -135,30 +166,23 @@ def _get_best_orientation(
             so only adds .1 to the score
     """
 
-    width, height = area_size
+    width, _ = area_size
 
     best_total_score = -1.0
     best_orientation = None
 
     for orientation in orientations:
-        # calculate and normalise xor score
-        xor_score = 0
-        for present_row, window_row in zip(orientation, window):
-            xor_score += bin(present_row ^ window_row).count('1')
+        # get xor score
+        norm_xor = _get_xor_score(orientation, window)
 
-        max_xor = 9
-        norm_xor = xor_score / max_xor
-
-        # calculate and normalise adjacency score
-        adj_score = _get_adjacency_score(
-            placement_area, i, area_size, orientation)
-        max_adj = 12  # 12 adj squares total with a 3x3 window
-        norm_adj = adj_score / max_adj
+        # get adjacency score
+        norm_adj = _get_adjacency_score(
+            placement_area, window_i, area_size, orientation)
 
         # weighted combination
         total_score = (
             norm_xor * 0.6 +   # Fill empty space
-            norm_adj * 0.3     # Compactness
+            norm_adj * 0.4     # Compactness
         )
 
         if total_score > best_total_score:
@@ -168,9 +192,31 @@ def _get_best_orientation(
     # make bitmask of best orientation
     bitmask = []
     for present_row, window_row in zip(best_orientation, window):
-        bitmask.append((present_row ^ window_row) << (i-1) % width)
+        bitmask.append((present_row ^ window_row) << (window_i-1) % width)
 
     return best_total_score * 100, bitmask
+
+
+def _window_out_of_bounds(window_i: int, width: int, height: int) -> bool:
+    # if 3x3 square with centre i overlaps horizontal boundary
+    if (window_i % width) == 0 or ((window_i+1) % width) == 0:
+        return True
+
+    # if 3x3 square with centre i overlaps vertical boundary
+    if (window_i // width) == 0 or (window_i // width) == height-1:
+        return True
+    return False
+
+
+def _get_window(placement_area: list[int], window_i: int, width: int) -> list[int]:
+    # get 3 rows from window with i in centre
+    window: list[int] = []
+    top_row_idx = (window_i // width) - 1
+    bottom_row_idx = (window_i // width) + 1
+    for row in range(top_row_idx, bottom_row_idx+1):
+        shift = (window_i-1) % width
+        window.append((placement_area[row] >> shift) & WINDOW_ROW_MASK)
+    return window
 
 
 def find_best_placement(placement_area: list[int],
