@@ -190,8 +190,8 @@ def _get_best_orientation(
 
         # weighted combination
         total_score = (
-            norm_xor * 0.2 +       # Fill empty space
-            norm_adj * 0.8         # Compactness
+            norm_xor * 0.5 +       # Fill empty space
+            norm_adj * 0.5         # Compactness
         )
 
         if total_score > best_total_score:
