@@ -27,22 +27,26 @@ class Placement:
     bitmask_range: tuple[int, int]
 
 
-def _point_cannot_fit(i: int, original_i: int, width: int, height: int) -> bool:
+def _point_cannot_fit(adj_i: int, original_i: int, width: int) -> bool:
     # if point i passes vertical boundary
-    if (i < 0) or (i // width) > height-1:
+    if (adj_i < 0) or (adj_i // width) >= width:
         return True
-    # if point i is not on the same line as original + not top/bottom adjacent
-    if ((original_i // width) != (i // width)) and ((original_i % width) != (i % width)):
+
+    # if point i is not adjacent to original (exceeded horizontal boundary)
+    diff_row = (original_i // width) != (adj_i // width)
+    diff_column = (original_i % width) != (adj_i % width)
+    if diff_row and diff_column:
         return True
+
     return False
 
 
 def _adj_cell_is_1(
+    point: int,
     placement_area: list[int],
-    width: int,
-    point: int
+    width: int
 ) -> bool:
-    if placement_area[point // width] >> point % width & 1:
+    if placement_area[point // width] >> (point % width) & 1:
         return True
     return False
 
@@ -95,9 +99,9 @@ def _get_adjacency_score(
         present: PresentOrientation
 ) -> float:
     adj_score = 0
-    non_adj_point = 0
+    max_possible_adj = 0
 
-    width, height = area_size
+    width, _ = area_size
     # Get i positions of all occupied present cells
     cell_idxs = _all_occupied_present_cells(window_i, present, width)
 
@@ -112,19 +116,20 @@ def _get_adjacency_score(
             # adj cell is one of the occupied present cells
             if adj_cell_idx in cell_idxs:
                 continue
+
+            # add to max possible adj
+            max_possible_adj += 1
+
             # adj cell can't fit on side or on top of adj cell (edge placement)
-            if _point_cannot_fit(adj_cell_idx, cell_idx, width, height):
+            if _point_cannot_fit(adj_cell_idx, cell_idx, width):
                 adj_score += 1
+
             # otherwise if position is occupied, add 1 to score
-            elif _adj_cell_is_1(placement_area, width, adj_cell_idx):
+            elif _adj_cell_is_1(adj_cell_idx, placement_area, width):
                 adj_score += 1
-            # add 1 to non_adj point so we can normalise
-            else:
-                non_adj_point += 1
 
     # normalise
-    max_adj = adj_score + non_adj_point
-    norm_adj_score = adj_score / max_adj
+    norm_adj_score = adj_score / max_possible_adj
 
     return norm_adj_score
 
@@ -197,13 +202,13 @@ def _get_best_orientation(
     return best_total_score * 100, bitmask
 
 
-def _window_out_of_bounds(window_i: int, width: int, height: int) -> bool:
+def _window_out_of_bounds(window_i: int, width: int) -> bool:
     # if 3x3 square with centre i overlaps horizontal boundary
     if (window_i % width) == 0 or ((window_i+1) % width) == 0:
         return True
 
     # if 3x3 square with centre i overlaps vertical boundary
-    if (window_i // width) == 0 or (window_i // width) == height-1:
+    if ((window_i // width) - 1) < 0 or ((window_i // width) + 1) >= width:
         return True
     return False
 
@@ -239,13 +244,18 @@ def find_best_placement(placement_area: list[int],
 
     width, height = area_size
 
-    best_col = math.inf
+    best_row = math.inf
     best_score = -1
     best_bitmask = []
     best_bitmask_range = (-1, -1)
 
     for i in range(width * height):
-        if _window_out_of_bounds(i, width, height):
+        # if best row is already set and is not in i's current row
+        if best_row not in (math.inf, i // width):
+            break
+
+        # if 3x3 window can't fit with centre point i
+        if _window_out_of_bounds(i, width):
             continue
 
         # get 3 rows from window with i in centre
@@ -263,13 +273,13 @@ def find_best_placement(placement_area: list[int],
             placement_area, i, area_size, orientations, window)
 
         # update best row/score
-        if (i // width) <= best_col and (score > best_score):
-            best_col = i // width
+        if (i // width) <= best_row and (score > best_score):
+            best_row = i // width
             best_score = score
             best_bitmask = bitmask
             best_bitmask_range = (i//width-1, i//width+2)
 
-    if best_col == math.inf:
+    if best_row == math.inf:
         return None
 
     return Placement(best_score, best_bitmask, best_bitmask_range)
@@ -283,7 +293,7 @@ def presents_can_fit(
     """ Checks if all presents can fit in area. """
 
     # one int for each row
-    area = [0] * area_size[1]
+    area = [0] * area_size[0]
 
     while sum(present_count) > 0:
         best_present_idx = -1
@@ -411,8 +421,8 @@ def day12(present_matrices: list[list[int]], placement_info: list[str, str, list
     #             finally:
     #                 pbar.update(1)
 
-    print(
-        f"All iterations complete, total areas which fit all presents: {fit_count}")
+    # print(
+    #     f"All iterations complete, total areas which fit all presents: {fit_count}")
 
 
 if __name__ == "__main__":
