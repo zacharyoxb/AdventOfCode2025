@@ -27,9 +27,9 @@ class Placement:
     bitmask_range: tuple[int, int]
 
 
-def _point_cannot_fit(adj_i: int, original_i: int, width: int) -> bool:
+def _point_cannot_fit(adj_i: int, original_i: int, width: int, height: int) -> bool:
     # if point i passes vertical boundary
-    if (adj_i < 0) or (adj_i // width) >= width:
+    if (adj_i < 0) or (adj_i // width) >= height:
         return True
 
     # if point i is not adjacent to original (exceeded horizontal boundary)
@@ -46,7 +46,9 @@ def _adj_cell_is_1(
     placement_area: list[int],
     width: int
 ) -> bool:
-    if placement_area[point // width] >> (point % width) & 1:
+    row = point // width
+    shift = point % width
+    if (placement_area[row] >> shift) & 1:
         return True
     return False
 
@@ -103,7 +105,7 @@ def _get_adjacency_score(
     # set of all adjacent indexes that are 0
     all_adj_cells = set()
 
-    width, _ = area_size
+    width, height = area_size
     # Get i positions of all occupied present cells
     cell_idxs = _all_occupied_present_cells(window_i, present, width)
 
@@ -123,7 +125,7 @@ def _get_adjacency_score(
             all_adj_cells.add(adj_cell_idx)
 
             # adj cell can't fit on side or on top of adj cell (edge placement)
-            if _point_cannot_fit(adj_cell_idx, cell_idx, width):
+            if _point_cannot_fit(adj_cell_idx, cell_idx, width, height):
                 adj_indxs.add(adj_cell_idx)
 
             # otherwise if position is occupied, add 1 to score
@@ -255,16 +257,11 @@ def find_best_placement(placement_area: list[int],
 
     width, height = area_size
 
-    best_row = math.inf
     best_score = -1
     best_bitmask = []
     best_bitmask_range = (-1, -1)
 
     for i in range(width * height):
-        # if best row is already set and is not in i's current row
-        if best_row not in (math.inf, i // width):
-            break
-
         # if 3x3 window can't fit with centre point i
         if _window_out_of_bounds(i, width, height):
             continue
@@ -285,12 +282,11 @@ def find_best_placement(placement_area: list[int],
 
         # update best row/score
         if score > best_score:
-            best_row = i // width
             best_score = score
             best_bitmask = bitmask
             best_bitmask_range = (i//width-1, i//width+2)
 
-    if best_row == math.inf:
+    if best_score == -1:
         return None
 
     return Placement(best_score, best_bitmask, best_bitmask_range)
