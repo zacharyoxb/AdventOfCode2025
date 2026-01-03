@@ -98,8 +98,10 @@ def _get_adjacency_score(
         area_size: tuple[int, int],
         present: PresentOrientation
 ) -> float:
-    adj_score = 0
-    max_possible_adj = 0
+    # set of all adjacent indexes out of bounds / 1
+    adj_indxs = set()
+    # set of all adjacent indexes that are 0
+    all_adj_cells = set()
 
     width, _ = area_size
     # Get i positions of all occupied present cells
@@ -118,18 +120,18 @@ def _get_adjacency_score(
                 continue
 
             # add to max possible adj
-            max_possible_adj += 1
+            all_adj_cells.add(adj_cell_idx)
 
             # adj cell can't fit on side or on top of adj cell (edge placement)
             if _point_cannot_fit(adj_cell_idx, cell_idx, width):
-                adj_score += 1
+                adj_indxs.add(adj_cell_idx)
 
             # otherwise if position is occupied, add 1 to score
             elif _adj_cell_is_1(adj_cell_idx, placement_area, width):
-                adj_score += 1
+                adj_indxs.add(adj_cell_idx)
 
     # normalise
-    norm_adj_score = adj_score / max_possible_adj
+    norm_adj_score = len(adj_indxs) / len(all_adj_cells)
 
     return norm_adj_score
 
