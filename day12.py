@@ -202,14 +202,23 @@ def _get_best_orientation(
     return best_total_score * 100, bitmask
 
 
-def _window_out_of_bounds(window_i: int, width: int) -> bool:
-    # if 3x3 square with centre i overlaps horizontal boundary
-    if (window_i % width) == 0 or ((window_i+1) % width) == 0:
+def _window_out_of_bounds(window_i: int, width: int, height: int) -> bool:
+    # 3x3 window overlaps with top boundary
+    if window_i < width:
         return True
 
-    # if 3x3 square with centre i overlaps vertical boundary
-    if ((window_i // width) - 1) < 0 or ((window_i // width) + 1) >= width:
+    # 3x3 window overlaps with bottom boundary
+    if (window_i // width) >= (height-1):
         return True
+
+    # 3x3 window overlaps with left boundary
+    if window_i % width == 0:
+        return True
+
+    # 3x3 window overlaps with right boundary
+    if (window_i+1) % width == 0:
+        return True
+
     return False
 
 
@@ -255,7 +264,7 @@ def find_best_placement(placement_area: list[int],
             break
 
         # if 3x3 window can't fit with centre point i
-        if _window_out_of_bounds(i, width):
+        if _window_out_of_bounds(i, width, height):
             continue
 
         # get 3 rows from window with i in centre
@@ -273,7 +282,7 @@ def find_best_placement(placement_area: list[int],
             placement_area, i, area_size, orientations, window)
 
         # update best row/score
-        if (i // width) <= best_row and (score > best_score):
+        if score > best_score:
             best_row = i // width
             best_score = score
             best_bitmask = bitmask
@@ -293,7 +302,7 @@ def presents_can_fit(
     """ Checks if all presents can fit in area. """
 
     # one int for each row
-    area = [0] * area_size[0]
+    area = [0] * area_size[1]
 
     while sum(present_count) > 0:
         best_present_idx = -1
@@ -387,7 +396,7 @@ def _get_args(present_matrices: list[list[int]],
               placement_info: list[str, str, list[int]]
               ):
     args = []
-    for width_str, height_str, present_count_str in placement_info:
+    for height_str, width_str, present_count_str in placement_info:
         height, width = int(height_str), int(width_str)
         orientations = _get_bitmask_orientations(present_matrices)
         present_count_str = present_count_str.split()
