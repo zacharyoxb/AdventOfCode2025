@@ -31,7 +31,7 @@ def _point_cannot_fit(i: int, original_i: int, width: int, height: int) -> bool:
     # if point i passes vertical boundary
     if (i < 0) or (i // width) > height-1:
         return True
-    # if point i is not on the same line as original
+    # if point i is not on the same line as original + not top/bottom adjacent
     if ((original_i // width) != (i // width)) and ((original_i % width) != (i % width)):
         return True
     return False
@@ -76,10 +76,12 @@ def _all_adjacent_cells(
         cell_idx: int,
         width: int
 ) -> Generator[int, None, None]:
+    # above, left, right, bottom
     pos_offset = [
-        -width-1, -width, -width+1,
-        -1,                      1,
-        width-1,   width,  width+1
+        -width,
+        -1,
+        1,
+        width,
     ]
 
     for offset in pos_offset:
