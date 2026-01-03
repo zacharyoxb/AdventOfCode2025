@@ -2,8 +2,7 @@
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
-from functools import partial, reduce
-import operator
+import math
 import re
 from typing import Generator, Optional, TypeAlias
 import numpy as np
@@ -92,9 +91,8 @@ def _get_adjacency_score(
         window_i: int,
         area_size: tuple[int, int],
         present: PresentOrientation
-) -> tuple[float, float]:
-    adj_to_cell_score = 0
-    adj_to_border_score = 0
+) -> float:
+    adj_score = 0
     non_adj_point = 0
 
     width, height = area_size
@@ -114,20 +112,19 @@ def _get_adjacency_score(
                 continue
             # adj cell can't fit on side or on top of adj cell (edge placement)
             if _point_cannot_fit(adj_cell_idx, cell_idx, width, height):
-                adj_to_border_score += 1
+                adj_score += 1
             # otherwise if position is occupied, add 1 to score
             elif _adj_cell_is_1(placement_area, width, adj_cell_idx):
-                adj_to_cell_score += 1
+                adj_score += 1
             # add 1 to non_adj point so we can normalise
             else:
                 non_adj_point += 1
 
     # normalise
-    max_adj = adj_to_cell_score + adj_to_border_score + non_adj_point
-    norm_to_cell_adj = adj_to_cell_score / max_adj
-    norm_to_border_adj = adj_to_border_score / max_adj
+    max_adj = adj_score + non_adj_point
+    norm_adj_score = adj_score / max_adj
 
-    return norm_to_cell_adj, norm_to_border_adj
+    return norm_adj_score
 
 
 def _get_xor_score(
@@ -177,14 +174,13 @@ def _get_best_orientation(
         norm_xor = _get_xor_score(orientation, window)
 
         # get adjacency score
-        norm_cell_adj, norm_border_adj = _get_adjacency_score(
+        norm_adj = _get_adjacency_score(
             placement_area, window_i, area_size, orientation)
 
         # weighted combination
         total_score = (
             norm_xor * 0.2 +       # Fill empty space
-            norm_cell_adj * 0.2 +  # Compactness (with other presents)
-            norm_border_adj * 0.6  # Compactness (with borders)
+            norm_adj * 0.8         # Compactness
         )
 
         if total_score > best_total_score:
@@ -225,8 +221,9 @@ def find_best_placement(placement_area: list[int],
                         area_size: tuple[int, int],
                         orientations: list[PresentOrientation],
                         ) -> Optional[Placement]:
-    """ Gets best fitting placement for present_matrix if possible
-    Returns the score of the mask and the mask of the present if successful
+    """ Gets best fitting placement for present_matrix if possible.
+    Chooses best positioning furthest up the area.
+    Returns the score of the mask and the mask of the present if successful.
 
     Args:
         placement_area (list[int]): binary numbers representing each row of area
@@ -240,6 +237,7 @@ def find_best_placement(placement_area: list[int],
 
     width, height = area_size
 
+    best_col = math.inf
     best_score = -1
     best_bitmask = []
     best_bitmask_range = (-1, -1)
@@ -262,13 +260,14 @@ def find_best_placement(placement_area: list[int],
         score, bitmask = _get_best_orientation(
             placement_area, i, area_size, orientations, window)
 
-        # update best score
-        if score > best_score:
+        # update best row/score
+        if (i // width) <= best_col and (score > best_score):
+            best_col = i // width
             best_score = score
             best_bitmask = bitmask
             best_bitmask_range = (i//width-1, i//width+2)
 
-    if best_score == -1:
+    if best_col == math.inf:
         return None
 
     return Placement(best_score, best_bitmask, best_bitmask_range)
@@ -293,8 +292,6 @@ def presents_can_fit(
             # if count for this present is 0
             if present_count[npresent] == 0:
                 continue
-
-            # START WITH ONLY FIRST 3 ROWS OF PLACEMENT AREA, INCREASE WHEN PLACEMENT == NONE
 
             placement = find_best_placement(
                 area, area_size, present_orientations)
@@ -412,8 +409,8 @@ def day12(present_matrices: list[list[int]], placement_info: list[str, str, list
     #             finally:
     #                 pbar.update(1)
 
-    # print(
-    #     f"All iterations complete, total areas which fit all presents: {fit_count}")
+    print(
+        f"All iterations complete, total areas which fit all presents: {fit_count}")
 
 
 if __name__ == "__main__":
