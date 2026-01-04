@@ -13,17 +13,19 @@ PresentOrientation: TypeAlias = list[int]
 @dataclass
 class Present:
     """ Represents every present rotation as a bitmask """
-    mask: PresentOrientation
+    masks: list[PresentOrientation]
 
     @classmethod
     def from_matrix(cls, matrix: PresentMatrix) -> 'Present':
         """ Factory method to create Present from matrix """
-        mask = cls._matrix_to_bitmask(matrix)
+        masks = []
+        for i in range(0, 8):
+            cls.masks.append(cls._get_mask_orientation(matrix, i))
 
-        return cls(mask=mask)
+        return cls(masks=masks)
 
     @staticmethod
-    def _matrix_to_bitmask(matrix):
+    def _matrix_to_bitmask(matrix: PresentMatrix) -> PresentOrientation:
         """ Convert 3x3 matrix to three 3-digit binary numbers (one per row) """
         binary_rows = []
 
@@ -50,8 +52,9 @@ class Present:
             matrix.append(row)
         return np.array(matrix, dtype=np.int8)
 
-    def mutate_grid(self, mutation: int):
-        """ Rotate grid by specified number of 90-degree rotations (0-3)
+    @classmethod
+    def _get_mask_orientation(cls, mask: PresentMatrix, mutation: int):
+        """ Rotate grid by specified number of 90-degree rotations (0-7)
         0: no rotation
         1: 90° right / clockwise
         2: 180°
@@ -63,8 +66,7 @@ class Present:
 
         Returns a new Present with rotated mask
         """
-        # convert to matrix
-        mutated = self._bitmask_to_matrix(self.mask)
+        mutated = mask
 
         # flip if required
         if mutation > 3:
@@ -74,4 +76,5 @@ class Present:
         rot = mutation % 4
         mutated = np.rot90(mutated, k=-rot)
 
-        self.mask = self._matrix_to_bitmask(mutated)
+        # return bitmask
+        return cls._matrix_to_bitmask(mutated)

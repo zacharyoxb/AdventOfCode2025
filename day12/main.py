@@ -1,26 +1,19 @@
 """ Main day 12 file """
 import re
-import copy
 
 import numpy as np
 
 from ga_types import Present, PresentMatrix
 
 
-def can_fit(height: int, width: int, presents: list[Present]):
+def can_fit(height: int, width: int, presents: list[Present], present_count: list[int]):
     """ Checks if all presents can fit """
 
 
-def day12(present_matrices: list[PresentMatrix], placement_info: list[tuple[str, str, str]]):
-    """ Main function """
-    fit_count = 0
-
-    presents: list = []
-
-    # create presents
-    for i, present in enumerate(present_matrices):
-        presents.append(Present.from_matrix(present))
-
+def info_to_list(placement_info: list[tuple[str, str, str]]) -> list[tuple[int, int, list[int]]]:
+    """ Get string placement info, converts to list containing 
+    tuple of int height, int width, and an int list with all present counts.
+    """
     # get height and width of container and amount of presents to place
     args = []
     for height_str, width_str, present_count_str in placement_info:
@@ -28,19 +21,23 @@ def day12(present_matrices: list[PresentMatrix], placement_info: list[tuple[str,
         present_count_str = present_count_str.split()
         present_count = list(map(int, present_count_str))
         args.append((height, width, present_count))
+    return args
+
+
+def day12(present_matrices: list[PresentMatrix], placement_info: list[tuple[str, str, str]]):
+    """ Main function """
+    fit_count = 0
+    presents: list[Present] = []
+
+    # create presents
+    for present in present_matrices:
+        presents.append(Present.from_matrix(present))
+
+    # get height and width of container and amount of presents to place
+    args = info_to_list(placement_info)
 
     for height, width, present_count in args:
-        iter_presents: list[Present] = []
-
-        # add all presents based on present_count
-        for i, count in enumerate(present_count):
-            if count == 0:
-                continue
-
-            clones = [copy.deepcopy(presents[i]) for _ in range(count)]
-            iter_presents.extend(clones)
-
-        if can_fit(height, width, iter_presents):
+        if can_fit(height, width, presents, present_count):
             fit_count += 1
 
     print(f"Amount of placement areas that can fit all presents: {fit_count}")
