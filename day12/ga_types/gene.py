@@ -11,7 +11,7 @@ class Gene:
     present_idx: int
     x: int
     y: int
-    rotation: int
+    orientation: int
 
     @classmethod
     def create_random_batch(
@@ -28,9 +28,10 @@ class Gene:
         # Generate all random values at once
         xs = np.random.randint(x_min, x_max + 1, size=batch_size)
         ys = np.random.randint(y_min, y_max + 1, size=batch_size)
-        rotations = np.random.randint(0, 8, size=batch_size)
+        orientations = np.random.randint(0, 8, size=batch_size)
 
         return [
-            cls(present_idx=present_idx, x=int(x), y=int(y), rotation=int(rot))
-            for x, y, rot in zip(xs, ys, rotations)
+            cls(present_idx=present_idx, x=int(x),
+                y=int(y), orientation=int(rot))
+            for x, y, rot in zip(xs, ys, orientations)
         ]
