@@ -101,8 +101,7 @@ class PresentPackingGA:
             parent2: 'creator.Individual'
     ) -> tuple['creator.Individual', 'creator.Individual']:
         """
-        Crossover at gene level - swaps entire (orientation, x, y) blocks
-        at 2 random gene boundaries.
+        Applies 2 point crossover to parents, returns offspring
         """
         # get 2 points within range randomly, sort to ascending order
         cx1, cx2 = sorted(random.sample(range(1, len(parent1)), 2))
