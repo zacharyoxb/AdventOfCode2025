@@ -1,5 +1,6 @@
 """ Genetic algorithm for placement """
 
+from dataclasses import dataclass
 import random
 
 from deap import base, creator, tools
@@ -91,7 +92,7 @@ class PresentPackingGA:
 
         return creator.Individual(individual)
 
-    def evaluate(self, individual: 'creator.Individual') -> tuple:
+    def evaluate(self, _individual: 'creator.Individual') -> tuple:
         """ Evaluates placement """
         return (1, 1, 1)
 
@@ -109,5 +110,47 @@ class PresentPackingGA:
         child2 = parent2[:cx1] + parent1[cx1:cx2] + parent2[cx2:]
         return child1, child2
 
-    def mutate(self, individual: 'creator.Individual', indpb: float):
+    def _reflect(self, value: int, lower: int, upper: int):
+        """ Reflect value to prevent it getting stuck at edges """
+        if value < lower:
+            return 2 * lower - value  # Reflect below lower bound
+        if value > upper:
+            return 2 * upper - value  # Reflect above upper bound
+
+        return value  # Already within bounds
+
+    @dataclass
+    class MutationConfig:
+        """ Config for mutation function"""
+        x_sigma: int
+        y_sigma: int
+        orient_mutpb: float = 0.2
+        x_mutpb: float = 0.4
+        y_mutpb: float = 0.4
+
+    def mutate(
+            self,
+            individual: 'creator.Individual',
+            config: MutationConfig
+    ):
         """ Mutates placement """
+        width, height = self.container_dims
+        for i, _ in enumerate(individual):
+            idx, orientation, x, y = individual[i]
+
+            # Orientation: circular mutation
+            if random.random() < config.orient_mutpb:
+                orientation = orientation + random.choice([-1, 1])
+                orientation = orientation % 8
+
+            # Coordinates: Gaussian with bounds
+            if random.random() < config.x_mutpb:
+                x = x + random.gauss(0, config.x_sigma)
+                x = self._reflect(x, 0, width-1)
+            if random.random() < config.y_mutpb:
+                y = y + random.gauss(0, config.y_sigma)
+                y = self._reflect(y, 0, height-1)
+
+            individual[i] = (idx, orientation, x, y)
+
+        return individual
