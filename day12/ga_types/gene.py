@@ -9,9 +9,9 @@ import numpy as np
 class Gene:
     """ Holds data for each gene in GA """
     present_idx: int
+    orientation: int
     x: int
     y: int
-    orientation: int
 
     @classmethod
     def create_random_batch(

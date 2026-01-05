@@ -1,11 +1,10 @@
 """ Genetic algorithm for placement """
 
-from dataclasses import astuple
-import pygad as pg
+import random
+
+from deap import base, creator, tools
 
 from ga_types import Present
-from ga_types import Gene
-from ga_types import PlacementArea
 
 
 class PresentPackingGA:
@@ -30,104 +29,80 @@ class PresentPackingGA:
         self.container_dims = (container_width, container_height)
         self.presents = presents
         self.present_count = present_count
+        self.toolbox = base.Toolbox()
 
-        # create starting population
-        pop = self._get_population(
-            present_count, container_height, container_width)
+        self.required_present_indices = []
+        for present_idx, count in enumerate(self.present_count):
+            self.required_present_indices.extend([present_idx] * count)
 
-        gene_space = self._get_gene_space(
-            present_count, container_height, container_width)
+        self._setup_deap_types()
+        self.setup_deap()
 
-        # Init GA
-        self.ga = pg.GA(
-            num_generations=100,
-            num_parents_mating=len(pop) // 2,
-            fitness_func=self.fitness_func,
-            initial_population=pop,
-            gene_type=int,
-            parent_selection_type="rws",
-            crossover_type="single_point",
-            crossover_probability=0.8,
-            mutation_type="swap",
-            mutation_probability=0.1,
-            mutation_percent_genes="default",
-            random_mutation_min_val=-1,
-            random_mutation_max_val=1,
-            gene_space=gene_space,
-            save_solutions=True
+    def _setup_deap_types(self):
+        """ Setup DEAP types """
+        if hasattr(creator, "FitnessMax"):
+            del creator.FitnessMax  # type: ignore
+        if hasattr(creator, "Individual"):
+            del creator.Individual  # type: ignore
+
+        creator.create("FitnessMax", base.Fitness, weights=(1.0,))
+        creator.create("Individual", list,
+                       fitness=creator.FitnessMax)
+
+    def setup_deap(self):
+        """ Sets up deap algorithm """
+
+        # Register attributes not including idx
+        height, width = self.container_dims
+        self.toolbox.register("attr_orientation", random.randint, 0, 7)
+        self.toolbox.register("attr_x", random.randint, 0, width-2)
+        self.toolbox.register("attr_y", random.randint, 0, height-2)
+
+        # Form genes / individuals / populations
+        self.toolbox.register("gene", self.create_gene)
+        self.toolbox.register("individual", self.create_individual)
+        self.toolbox.register("population", tools.initRepeat,
+                              list, self.toolbox.individual)
+
+        # custom GA functions
+        self.toolbox.register("evaluate", self.evaluate)
+        self.toolbox.register("mate", self.mate)
+        self.toolbox.register("mutate", self.mutate)
+        self.toolbox.register("select", tools.selTournament, tournsize=3)
+
+    def create_gene(self, present_idx) -> tuple[int, int, int, int]:
+        """ Creates gene of present_idx """
+        return (
+            present_idx,
+            self.toolbox.attr_orientation(),
+            self.toolbox.attr_x(),
+            self.toolbox.attr_y(),
         )
 
-        # Number of genes = number of presents * 3 (idx, x, y, rotation)
-        self.num_genes = len(self.presents) * 3
+    def create_individual(self) -> 'creator.Individual':
+        """ Create individual with exact present counts """
+        # Start with shuffled required indices
+        present_indices = self.required_present_indices.copy()
+        random.shuffle(present_indices)
 
-    def _get_population(
+        # Create genes for each required present
+        individual = []
+        for present_idx in present_indices:
+            individual.append(self.create_gene(present_idx))
+
+        return creator.Individual(individual)
+
+    def evaluate(self, individual: 'creator.Individual') -> tuple:
+        """ Evaluates placement """
+        return (1, 1, 1)
+
+    def mate(
             self,
-            present_count: list[int],
-            container_height: int,
-            container_width: int
-    ) -> list[tuple[int, int, int, int]]:
-        pop = []
-        for i, count in enumerate(present_count):
-            # For each gene: [idx, x, y, orientation]
-            gene_batch = Gene.create_random_batch(
-                i, (2, container_height-2), (2, container_width-2), count)
-            tuple_genes = list(map(astuple, gene_batch))
-            pop.extend(tuple_genes)
-        return pop
+            ind1: 'creator.Individual',
+            ind2: 'creator.Individual'
+    ) -> tuple['creator.Individual', 'creator.Individual']:
+        """ Creates 2 offspring from 2 individuals """
+        return (1, 1)
 
-    def _get_gene_space(self,
-                        present_count: list[int],
-                        container_height: int,
-                        container_width: int,
-                        ) -> list[list[int]]:
-
-        gene_space = []
-        for i, count in enumerate(present_count):
-            # For each gene: [idx, x, y, orientation]
-            for _ in range(count):
-                gene_space.append(
-                    [i, range(container_width - 1),
-                     range(container_height - 1), range(8)]
-                )
-
-        return gene_space
-
-    def fitness_func(self, _ga_instance, solution, _solution_idx):
-        """ Gets fitness of solution """
-        genes = Gene.get_solution_genes(solution)
-        area = PlacementArea(*self.container_dims, self.presents)
-
-        total_collisions = 0
-        total_positive_score = 0
-        valid_placements = 0
-
-        for gene in genes:
-            score = area.place_present(gene)
-
-            # Check if this placement had collisions
-            if score < 0:
-                total_collisions += 1
-            else:
-                total_positive_score += score
-                valid_placements += 1
-
-        # ANY collision fails the entire solution
-        if total_collisions > 0:
-            # Return collision-based value to GA favours less collisions
-            return -1000.0 * total_collisions
-
-        # Only reward if NO collisions
-        if valid_placements > 0:
-            return total_positive_score / valid_placements
-        return 0.0
-
-    def best_solution_is_successful(self):
-        """ Returns true if the best solution has no collisions """
-
-        self.ga.run()
-
-        _, solution_fitness, _ = self.ga.best_solution()
-
-        if solution_fitness < 0:
-            return False
-        return True
+    def mutate(self, individual: 'creator.Individual', indpb: float):
+        """ Mutates placement """
