@@ -4,10 +4,13 @@ import re
 import numpy as np
 
 from ga_types import Present, PresentMatrix
+from ga_types.present_packing_ga import PresentPackingGA
 
 
-def can_fit(height: int, width: int, presents: list[Present], present_count: list[int]):
+def can_fit(width: int, height: int, presents: list[Present], present_count: list[int]):
     """ Checks if all presents can fit """
+    genetic_alg = PresentPackingGA(width, height, presents, present_count)
+    return genetic_alg.best_solution_is_successful()
 
 
 def info_to_list(placement_info: list[tuple[str, str, str]]) -> list[tuple[int, int, list[int]]]:
@@ -37,7 +40,7 @@ def day12(present_matrices: list[PresentMatrix], placement_info: list[tuple[str,
     args = info_to_list(placement_info)
 
     for height, width, present_count in args:
-        if can_fit(height, width, presents, present_count):
+        if can_fit(width, height, presents, present_count):
             fit_count += 1
 
     print(f"Amount of placement areas that can fit all presents: {fit_count}")

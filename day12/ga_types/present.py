@@ -20,7 +20,7 @@ class Present:
         """ Factory method to create Present from matrix """
         masks = []
         for i in range(0, 8):
-            cls.masks.append(cls._get_mask_orientation(matrix, i))
+            masks.append(cls._get_mask_orientation(matrix, i))
 
         return cls(masks=masks)
 

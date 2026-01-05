@@ -35,3 +35,14 @@ class Gene:
                 y=int(y), orientation=int(rot))
             for x, y, rot in zip(xs, ys, orientations)
         ]
+
+    @classmethod
+    def get_solution_genes(cls, solution: list[int]) -> list['Gene']:
+        """ Gets genes from solution returned by genetic algorithm. """
+        genes = []
+        gene_matrix = np.reshape(solution, (-1, 4))
+
+        for row in gene_matrix:
+            genes.append(Gene(row[0], row[1], row[2], row[3]))
+
+        return genes
