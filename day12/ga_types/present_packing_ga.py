@@ -66,7 +66,7 @@ class PresentPackingGA:
 
         # custom GA functions
         self.toolbox.register("evaluate", self.evaluate)
-        self.toolbox.register("mate", self.mate)
+        self.toolbox.register("mate", self.two_point_crossover)
         self.toolbox.register("mutate", self.mutate)
         self.toolbox.register("select", tools.selTournament, tournsize=3)
 
@@ -81,9 +81,8 @@ class PresentPackingGA:
 
     def create_individual(self) -> 'creator.Individual':
         """ Create individual with exact present counts """
-        # Start with shuffled required indices
+        # Start with required indices
         present_indices = self.required_present_indices.copy()
-        random.shuffle(present_indices)
 
         # Create genes for each required present
         individual = []
@@ -96,13 +95,20 @@ class PresentPackingGA:
         """ Evaluates placement """
         return (1, 1, 1)
 
-    def mate(
+    def two_point_crossover(
             self,
-            ind1: 'creator.Individual',
-            ind2: 'creator.Individual'
+            parent1: 'creator.Individual',
+            parent2: 'creator.Individual'
     ) -> tuple['creator.Individual', 'creator.Individual']:
-        """ Creates 2 offspring from 2 individuals """
-        return (1, 1)
+        """
+        Crossover at gene level - swaps entire (orientation, x, y) blocks
+        at 2 random gene boundaries.
+        """
+        # get 2 points within range randomly, sort to ascending order
+        cx1, cx2 = sorted(random.sample(range(1, len(parent1)), 2))
+        child1 = parent1[:cx1] + parent2[cx1:cx2] + parent1[cx2:]
+        child2 = parent2[:cx1] + parent1[cx1:cx2] + parent2[cx2:]
+        return child1, child2
 
     def mutate(self, individual: 'creator.Individual', indpb: float):
         """ Mutates placement """
