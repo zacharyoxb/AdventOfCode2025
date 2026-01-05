@@ -6,6 +6,8 @@ import random
 from deap import base, creator, tools
 
 from ga_types import Present
+from ga_types.gene import Gene
+from ga_types.placement_area import PlacementArea
 
 
 class PresentPackingGA:
@@ -83,7 +85,7 @@ class PresentPackingGA:
     def create_individual(self) -> 'creator.Individual':
         """ Create individual with exact present counts """
         # Start with required indices
-        present_indices = self.required_present_indices.copy()
+        present_indices = self.required_present_indices
 
         # Create genes for each required present
         individual = []
@@ -91,10 +93,6 @@ class PresentPackingGA:
             individual.append(self.create_gene(present_idx))
 
         return creator.Individual(individual)
-
-    def evaluate(self, _individual: 'creator.Individual') -> tuple:
-        """ Evaluates placement """
-        return (1, 1, 1)
 
     def two_point_crossover(
             self,
@@ -154,3 +152,26 @@ class PresentPackingGA:
             individual[i] = (idx, orientation, x, y)
 
         return individual
+
+    def evaluate(self, individual: 'creator.Individual') -> tuple:
+        """ Evaluates placement """
+        area = PlacementArea(*self.container_dims, self.presents)
+
+        collision_penalty = 0
+        valid_fitness = 0
+        valid_count = 0
+
+        for gene_data in individual:
+            gene = Gene(*gene_data)
+            placement_fitness = area.place_present(gene)
+
+            if placement_fitness < 0:
+                collision_penalty += placement_fitness
+            else:
+                valid_fitness += placement_fitness
+                valid_count += 1
+
+        if collision_penalty < 0:
+            return (collision_penalty,)
+
+        return (valid_fitness / valid_count,)
