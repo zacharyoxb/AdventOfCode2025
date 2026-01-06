@@ -1,13 +1,10 @@
 """ Genetic algorithm for placement """
 
-from dataclasses import dataclass
 import random
 
-from deap import base, creator, tools
+from deap import algorithms, base, creator, tools
 
-from ga_types import Present
-from ga_types.gene import Gene
-from ga_types.placement_area import PlacementArea
+from ga_types import Present, Gene, PlacementArea, PlacementMetrics
 
 
 class PresentPackingGA:
@@ -43,14 +40,14 @@ class PresentPackingGA:
 
     def _setup_deap_types(self):
         """ Setup DEAP types """
-        if hasattr(creator, "FitnessMax"):
-            del creator.FitnessMax  # type: ignore
+        if hasattr(creator, "MultiFitness"):
+            del creator.MultiFitness  # type: ignore
         if hasattr(creator, "Individual"):
             del creator.Individual  # type: ignore
 
-        creator.create("FitnessMax", base.Fitness, weights=(1.0,))
+        creator.create("MultiFitness", base.Fitness, weights=(1.0, -3.0, 1.0))
         creator.create("Individual", list,
-                       fitness=creator.FitnessMax)
+                       fitness=creator.MultiFitness)
 
     def setup_deap(self):
         """ Sets up deap algorithm """
@@ -58,8 +55,8 @@ class PresentPackingGA:
         # Register attributes not including idx
         height, width = self.container_dims
         self.toolbox.register("attr_orientation", random.randint, 0, 7)
-        self.toolbox.register("attr_x", random.randint, 0, width-2)
-        self.toolbox.register("attr_y", random.randint, 0, height-2)
+        self.toolbox.register("attr_x", random.randint, 1, width-2)
+        self.toolbox.register("attr_y", random.randint, 1, height-2)
 
         # Form genes / individuals / populations
         self.toolbox.register("gene", self.create_gene)
@@ -102,10 +99,20 @@ class PresentPackingGA:
         """
         Applies 2 point crossover to parents, returns offspring
         """
+        # if parents have less than 2 genes, do 1 point
+        if len(parent1) < 3:
+            child1 = creator.Individual(parent1[0] + parent2[1])
+            child2 = creator.Individual(parent2[0] + parent1[1])
+            return child1, child2
+
         # get 2 points within range randomly, sort to ascending order
         cx1, cx2 = sorted(random.sample(range(1, len(parent1)), 2))
-        child1 = parent1[:cx1] + parent2[cx1:cx2] + parent1[cx2:]
-        child2 = parent2[:cx1] + parent1[cx1:cx2] + parent2[cx2:]
+        child1 = creator.Individual(
+            parent1[:cx1] + parent2[cx1:cx2] + parent1[cx2:]
+        )
+        child2 = creator.Individual(
+            parent2[:cx1] + parent1[cx1:cx2] + parent2[cx2:]
+        )
         return child1, child2
 
     def _reflect(self, value: int, lower: int, upper: int):
@@ -117,61 +124,66 @@ class PresentPackingGA:
 
         return value  # Already within bounds
 
-    @dataclass
-    class MutationConfig:
-        """ Config for mutation function"""
-        x_sigma: int
-        y_sigma: int
-        orient_mutpb: float = 0.2
-        x_mutpb: float = 0.4
-        y_mutpb: float = 0.4
-
-    def mutate(
-            self,
-            individual: 'creator.Individual',
-            config: MutationConfig
-    ):
+    def mutate(self, individual: 'creator.Individual') -> 'creator.Individual':
         """ Mutates placement """
         width, height = self.container_dims
         for i, _ in enumerate(individual):
             idx, orientation, x, y = individual[i]
 
-            # Orientation: circular mutation
-            if random.random() < config.orient_mutpb:
+            # Orientation: circular mutation (0.2 prob)
+            if random.random() < 0.2:
                 orientation = orientation + random.choice([-1, 1])
                 orientation = orientation % 8
 
-            # Coordinates: Gaussian with bounds
-            if random.random() < config.x_mutpb:
-                x = x + random.gauss(0, config.x_sigma)
+            # Coordinates: Gaussian with bounds (0.4 prob)
+            if random.random() < 0.4:
+                x = x + random.gauss(0, 100)
                 x = self._reflect(x, 0, width-1)
-            if random.random() < config.y_mutpb:
-                y = y + random.gauss(0, config.y_sigma)
+            if random.random() < 0.4:
+                y = y + random.gauss(0, 100)
                 y = self._reflect(y, 0, height-1)
 
             individual[i] = (idx, orientation, x, y)
 
-        return individual
+        return (individual,)
 
     def evaluate(self, individual: 'creator.Individual') -> tuple:
         """ Evaluates placement """
         area = PlacementArea(*self.container_dims, self.presents)
 
-        collision_penalty = 0
-        valid_fitness = 0
-        valid_count = 0
+        metrics_list: list[PlacementMetrics] = []
 
         for gene_data in individual:
             gene = Gene(*gene_data)
-            placement_fitness = area.place_present(gene)
+            placement_metrics = area.place_present(gene)
+            metrics_list.append(placement_metrics)
 
-            if placement_fitness < 0:
-                collision_penalty += placement_fitness
-            else:
-                valid_fitness += placement_fitness
-                valid_count += 1
+        num_placements = len(metrics_list)
 
-        if collision_penalty < 0:
-            return (collision_penalty,)
+        total_norm_xor = 0.0
+        total_norm_collisions = 0.0
+        total_norm_adj_score = 0.0
 
-        return (valid_fitness / valid_count,)
+        for metrics in metrics_list:
+            total_norm_xor += metrics.norm_xor
+            total_norm_collisions += metrics.norm_collisions
+            total_norm_adj_score += metrics.norm_adj_score
+
+        avg_xor = total_norm_xor / num_placements
+        avg_collisions = total_norm_collisions / num_placements
+        avg_adj = total_norm_adj_score / num_placements
+
+        return (avg_xor, avg_collisions, avg_adj)
+
+    def run_can_fit(self, cxpb=0.4, mutpb=0.2, ngen=100) -> bool:
+        """ Runs evolutionary algorithm, returns true if found fitting solution """
+        population = self.toolbox.population(n=100)
+        hof = tools.HallOfFame(1)
+        algorithms.eaSimple(population=population,
+                            toolbox=self.toolbox, cxpb=cxpb, mutpb=mutpb, ngen=ngen, halloffame=hof)
+
+        best_individual = hof[0]
+        _, collisions, _ = best_individual.fitness.values
+        if collisions == 0:
+            return True
+        return False

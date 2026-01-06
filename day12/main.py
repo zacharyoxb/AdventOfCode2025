@@ -10,7 +10,8 @@ from ga_types.present_packing_ga import PresentPackingGA
 def can_fit(width: int, height: int, presents: list[Present], present_count: list[int]) -> bool:
     """ Checks if all presents can fit """
     genetic_alg = PresentPackingGA(width, height, presents, present_count)
-    return False
+
+    return genetic_alg.run_can_fit()
 
 
 def info_to_list(placement_info: list[tuple[str, str, str]]) -> list[tuple[int, int, list[int]]]:
