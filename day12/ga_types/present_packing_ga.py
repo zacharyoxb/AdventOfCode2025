@@ -101,47 +101,43 @@ class PresentPackingGA:
         """
         # if parents have less than 2 genes, do 1 point
         if len(parent1) < 3:
-            child1 = creator.Individual(parent1[0] + parent2[1])
-            child2 = creator.Individual(parent2[0] + parent1[1])
+            child1 = creator.Individual((parent1[0], parent2[1]))
+            child2 = creator.Individual((parent2[0], parent1[1]))
             return child1, child2
 
         # get 2 points within range randomly, sort to ascending order
         cx1, cx2 = sorted(random.sample(range(1, len(parent1)), 2))
         child1 = creator.Individual(
-            parent1[:cx1] + parent2[cx1:cx2] + parent1[cx2:]
+            (parent1[:cx1] + parent2[cx1:cx2] + parent1[cx2:])
         )
         child2 = creator.Individual(
-            parent2[:cx1] + parent1[cx1:cx2] + parent2[cx2:]
+            (parent2[:cx1] + parent1[cx1:cx2] + parent2[cx2:])
         )
         return child1, child2
-
-    def _reflect(self, value: int, lower: int, upper: int):
-        """ Reflect value to prevent it getting stuck at edges """
-        if value < lower:
-            return 2 * lower - value  # Reflect below lower bound
-        if value > upper:
-            return 2 * upper - value  # Reflect above upper bound
-
-        return value  # Already within bounds
 
     def mutate(self, individual: 'creator.Individual') -> 'creator.Individual':
         """ Mutates placement """
         width, height = self.container_dims
+        min_x, max_x = 1, width-2
+        min_y, max_y = 1, height-2
+
         for i, _ in enumerate(individual):
             idx, orientation, x, y = individual[i]
 
-            # Orientation: circular mutation (0.2 prob)
-            if random.random() < 0.2:
+            # Orientation: circular mutation (0.4 prob)
+            if random.random() < 0.4:
                 orientation = orientation + random.choice([-1, 1])
-                orientation = orientation % 8
+                orientation = (orientation+8) % 8
 
-            # Coordinates: Gaussian with bounds (0.4 prob)
-            if random.random() < 0.4:
-                x = x + random.gauss(0, 100)
-                x = self._reflect(x, 0, width-1)
-            if random.random() < 0.4:
-                y = y + random.gauss(0, 100)
-                y = self._reflect(y, 0, height-1)
+            # Coordinates: Uniform mutation with step size (Either mutates x or y)
+            if random.random() < 0.5:
+                step = random.randint(-10, 10)
+                x = x + step
+                x = max(min_x, min(max_x, x))  # Clamp to bounds
+            else:
+                step = random.randint(-10, 10)
+                y = y + step
+                y = max(min_y, min(max_y, y))  # Clamp to bounds
 
             individual[i] = (idx, orientation, x, y)
 
@@ -184,6 +180,7 @@ class PresentPackingGA:
 
         best_individual = hof[0]
         _, collisions, _ = best_individual.fitness.values
+        print(best_individual.fitness.values)
         if collisions == 0:
             return True
         return False
