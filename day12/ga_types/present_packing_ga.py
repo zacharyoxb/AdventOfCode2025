@@ -44,7 +44,7 @@ class PresentPackingGA:
         if hasattr(creator, "Individual"):
             del creator.Individual
 
-        creator.create("MultiFitness", base.Fitness, weights=(-2.0, 1.0, 1.0))
+        creator.create("MultiFitness", base.Fitness, weights=(-1.0, 1.0, 1.0))
         creator.create("Individual", list,
                        fitness=creator.MultiFitness)
 
@@ -113,26 +113,20 @@ class PresentPackingGA:
         child2 = creator.Individual(
             (parent2[:cx1] + parent1[cx1:cx2] + parent2[cx2:])
         )
+
+        # invalidate fitness
+        del child1.fitness.values
+        del child2.fitness.values
+
         return child1, child2
 
     def _reflect_value(self, value: int, lower: int, upper: int):
-        """
-        Reflect a value between lower and upper bounds.
-        Values outside bounds 'bounce' back within range.
-        """
-        period = 2 * (upper - lower)
-
-        # Normalize to start from 0
-        normalized = value - lower
-
-        # Apply modulo
-        mod_result = normalized % period
-
-        # Reflect if beyond half period
-        if mod_result > (upper - lower):
-            return upper - (mod_result - (upper - lower))
-
-        return mod_result + lower
+        span = upper - lower
+        # The key is using % (2*span) for the modulo
+        t = (value - lower) % (2 * span)
+        if t > span:
+            t = 2 * span - t
+        return t + lower
 
     def mutate(
             self,
@@ -145,21 +139,27 @@ class PresentPackingGA:
         width, height = self.container_dims
 
         for i, _ in enumerate(individual):
+            del_fitness = False
             idx, orientation, x, y = individual[i]
 
             # Orientation: circular mutation (0.4 prob)
             if random.random() < orientpb:
                 orientation = orientation + random.choice([-1, 1])
                 orientation = (orientation+8) % 8
+                del_fitness = True
 
             # Coordinates: Uniform mutation with step size
             if random.random() < xpb:
                 x = self._reflect_value(
                     x + random.randint(-50, 50), 1, width-2)
+                del_fitness = True
             if random.random() < ypb:
                 y = self._reflect_value(
                     y + random.randint(-50, 50), 1, height-2)
+                del_fitness = True
 
+            if del_fitness:
+                del individual.fitness.values
             individual[i] = (idx, orientation, x, y)
 
         return (individual,)
