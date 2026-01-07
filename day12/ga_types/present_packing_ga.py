@@ -68,7 +68,8 @@ class PresentPackingGA:
         self.toolbox.register("mate", self.two_point_crossover)
         self.toolbox.register("mutate", self.mutate,
                               orientpb=0.6, xpb=0.5, ypb=0.5)
-        self.toolbox.register("select", tools.selRoulette)
+        self.toolbox.register("select", tools.selTournament, tournsize=3)
+        self.toolbox.register("elitism", tools.selBest, k=10)
 
     def create_gene(self, present_idx) -> tuple[int, int, int, int]:
         """ Creates gene of present_idx """
@@ -198,17 +199,20 @@ class PresentPackingGA:
 
         return (total_collisions, avg_xor, avg_adj)
 
-    def run_can_fit(self, cxpb=0.6, mutpb=0.5, ngen=200) -> bool:
+    def run_can_fit(self, mu=100, lambda_=400, cxpb=0.6, mutpb=0.4, ngen=200) -> bool:
         """ Runs evolutionary algorithm, returns true if found fitting solution """
-        population = self.toolbox.population(n=500)
+        population = self.toolbox.population(n=mu+lambda_)
         hof = tools.HallOfFame(10)
-        algorithms.eaSimple(population=population,
-                            toolbox=self.toolbox, cxpb=cxpb, mutpb=mutpb, ngen=ngen, halloffame=hof)
+
+        algorithms.eaMuPlusLambda(population=population, toolbox=self.toolbox,
+                                  mu=mu, lambda_=lambda_, cxpb=cxpb, mutpb=mutpb,
+                                  ngen=ngen, halloffame=hof)
 
         best_individual = hof[0]
         collisions, _xor_score, _adj_score = best_individual.fitness.values
         print(
-            f"Collisions: {collisions}, xor score: {_xor_score}, adjacency score: {_adj_score}")
+            f"Collisions: {collisions}, xor score: {_xor_score}, adjacency score: {_adj_score}"
+        )
 
         if collisions:
             return False

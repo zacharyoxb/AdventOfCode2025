@@ -89,14 +89,16 @@ class PlacementArea:
         area_window = self._get_placement_window(placement_gene)
         present = self._get_present_to_place(placement_gene)
 
+        present_mask = present.astype(bool)
+
         # get state before present was placed, clamp incase -1
-        area_window[present.astype(bool)] -= 1
+        area_window[present_mask] -= 1
         area_window = np.maximum(area_window, 0)
 
         # get scores
         collisions = int(np.sum(area_window * present))
-        xor_score = int(np.count_nonzero(
-            (area_window > 0) ^ (present.astype(bool))))
+        occupied_before = area_window > 0  # Cells occupied before this gene
+        xor_score = int(np.sum(occupied_before ^ present_mask))
 
         # Calculate adjacency score
         norm_adj_score = self._get_adjacency_score(
