@@ -7,9 +7,15 @@ from ga_types import Present, PresentMatrix
 from ga_types.present_packing_ga import PresentPackingGA
 
 
-def can_fit(width: int, height: int, presents: list[Present], present_count: list[int]) -> bool:
+def can_fit(
+        width: int,
+        height: int,
+        presents: list[Present],
+        present_count: list[int]
+) -> bool:
     """ Checks if all presents can fit """
-    genetic_alg = PresentPackingGA(width, height, presents, present_count)
+    genetic_alg = PresentPackingGA(
+        (width, height), presents, present_count)
 
     return genetic_alg.run_can_fit()
 

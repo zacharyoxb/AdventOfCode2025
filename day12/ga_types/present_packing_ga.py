@@ -11,10 +11,9 @@ class PresentPackingGA:
     """ Genetic algorithm for packing presents """
 
     def __init__(self,
-                 container_width: int,
-                 container_height: int,
+                 container_dims: tuple[int, int],
                  presents: list[Present],
-                 present_count: list[int],
+                 present_count: list[int]
                  ):
         """
         GA for packing presents in a container
@@ -26,7 +25,7 @@ class PresentPackingGA:
         """
 
         # Store presents and container
-        self.container_dims = (container_width, container_height)
+        self.container_dims = container_dims
         self.presents = presents
         self.present_count = present_count
         self.toolbox = base.Toolbox()
@@ -45,7 +44,7 @@ class PresentPackingGA:
         if hasattr(creator, "Individual"):
             del creator.Individual
 
-        creator.create("MultiFitness", base.Fitness, weights=(-3.0, 1.0, 1.0))
+        creator.create("MultiFitness", base.Fitness, weights=(-2.0, 1.0, 1.0))
         creator.create("Individual", list,
                        fitness=creator.MultiFitness)
 
@@ -67,8 +66,9 @@ class PresentPackingGA:
         # custom GA functions
         self.toolbox.register("evaluate", self.evaluate)
         self.toolbox.register("mate", self.two_point_crossover)
-        self.toolbox.register("mutate", self.mutate)
-        self.toolbox.register("select", tools.selTournament, tournsize=3)
+        self.toolbox.register("mutate", self.mutate,
+                              orientpb=0.6, xpb=0.5, ypb=0.5)
+        self.toolbox.register("select", tools.selRoulette)
 
     def create_gene(self, present_idx) -> tuple[int, int, int, int]:
         """ Creates gene of present_idx """
@@ -115,29 +115,50 @@ class PresentPackingGA:
         )
         return child1, child2
 
-    def mutate(self, individual: 'creator.Individual') -> 'creator.Individual':
+    def _reflect_value(self, value: int, lower: int, upper: int):
+        """
+        Reflect a value between lower and upper bounds.
+        Values outside bounds 'bounce' back within range.
+        """
+        period = 2 * (upper - lower)
+
+        # Normalize to start from 0
+        normalized = value - lower
+
+        # Apply modulo
+        mod_result = normalized % period
+
+        # Reflect if beyond half period
+        if mod_result > (upper - lower):
+            return upper - (mod_result - (upper - lower))
+
+        return mod_result + lower
+
+    def mutate(
+            self,
+            individual: 'creator.Individual',
+            orientpb: int,
+            xpb: int,
+            ypb: int
+    ) -> 'creator.Individual':
         """ Mutates placement """
         width, height = self.container_dims
-        min_x, max_x = 1, width-2
-        min_y, max_y = 1, height-2
 
         for i, _ in enumerate(individual):
             idx, orientation, x, y = individual[i]
 
             # Orientation: circular mutation (0.4 prob)
-            if random.random() < 0.4:
+            if random.random() < orientpb:
                 orientation = orientation + random.choice([-1, 1])
                 orientation = (orientation+8) % 8
 
-            # Coordinates: Uniform mutation with step size (Either mutates x or y)
-            if random.random() < 0.5:
-                step = random.randint(-10, 10)
-                x = x + step
-                x = max(min_x, min(max_x, x))  # Clamp to bounds
-            else:
-                step = random.randint(-10, 10)
-                y = y + step
-                y = max(min_y, min(max_y, y))  # Clamp to bounds
+            # Coordinates: Uniform mutation with step size
+            if random.random() < xpb:
+                x = self._reflect_value(
+                    x + random.randint(-50, 50), 1, width-2)
+            if random.random() < ypb:
+                y = self._reflect_value(
+                    y + random.randint(-50, 50), 1, height-2)
 
             individual[i] = (idx, orientation, x, y)
 
@@ -170,10 +191,10 @@ class PresentPackingGA:
 
         return (total_collisions, avg_xor, avg_adj)
 
-    def run_can_fit(self, cxpb=0.4, mutpb=0.2, ngen=100) -> bool:
+    def run_can_fit(self, cxpb=0.6, mutpb=0.5, ngen=200) -> bool:
         """ Runs evolutionary algorithm, returns true if found fitting solution """
-        population = self.toolbox.population(n=100)
-        hof = tools.HallOfFame(1)
+        population = self.toolbox.population(n=500)
+        hof = tools.HallOfFame(10)
         algorithms.eaSimple(population=population,
                             toolbox=self.toolbox, cxpb=cxpb, mutpb=mutpb, ngen=ngen, halloffame=hof)
 
