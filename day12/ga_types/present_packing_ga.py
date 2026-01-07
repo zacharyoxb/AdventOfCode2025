@@ -207,6 +207,8 @@ class PresentPackingGA:
 
         best_individual = hof[0]
         collisions, _xor_score, _adj_score = best_individual.fitness.values
+        print(
+            f"Collisions: {collisions}, xor score: {_xor_score}, adjacency score: {_adj_score}")
 
         if collisions:
             return False

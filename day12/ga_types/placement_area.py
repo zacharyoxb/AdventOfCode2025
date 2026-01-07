@@ -36,7 +36,7 @@ class PlacementArea:
 
         window = self.area[y_start:y_end, x_start:x_end]
 
-        return window
+        return window.copy()
 
     def _get_adjacency_score(self, placement_gene: Gene, present: PresentMatrix) -> float:
         top_left_x = placement_gene.x - 1
@@ -90,7 +90,7 @@ class PlacementArea:
         present = self._get_present_to_place(placement_gene)
 
         # get state before present was placed, clamp incase -1
-        area_window[present] -= 1
+        area_window[present.astype(bool)] -= 1
         area_window = np.maximum(area_window, 0)
 
         # get scores
