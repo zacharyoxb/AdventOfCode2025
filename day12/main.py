@@ -21,10 +21,10 @@ def info_to_list(placement_info: list[tuple[str, str, str]]) -> list[tuple[int, 
     # get height and width of container and amount of presents to place
     args = []
     for height_str, width_str, present_count_str in placement_info:
-        height, width = int(height_str), int(width_str)
+        width, height = int(height_str), int(width_str)
         present_count_str = present_count_str.split()
         present_count = list(map(int, present_count_str))
-        args.append((height, width, present_count))
+        args.append((width, height, present_count))
     return args
 
 
@@ -40,7 +40,7 @@ def day12(present_matrices: list[PresentMatrix], placement_info: list[tuple[str,
     # get height and width of container and amount of presents to place
     args = info_to_list(placement_info)
 
-    for height, width, present_count in args:
+    for width, height, present_count in args:
         if can_fit(width, height, presents, present_count):
             fit_count += 1
 

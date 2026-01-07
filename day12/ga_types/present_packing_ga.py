@@ -41,11 +41,11 @@ class PresentPackingGA:
     def _setup_deap_types(self):
         """ Setup DEAP types """
         if hasattr(creator, "MultiFitness"):
-            del creator.MultiFitness  # type: ignore
+            del creator.MultiFitness
         if hasattr(creator, "Individual"):
-            del creator.Individual  # type: ignore
+            del creator.Individual
 
-        creator.create("MultiFitness", base.Fitness, weights=(1.0, -3.0, 1.0))
+        creator.create("MultiFitness", base.Fitness, weights=(-3.0, 1.0, 1.0))
         creator.create("Individual", list,
                        fitness=creator.MultiFitness)
 
@@ -53,7 +53,7 @@ class PresentPackingGA:
         """ Sets up deap algorithm """
 
         # Register attributes not including idx
-        height, width = self.container_dims
+        width, height = self.container_dims
         self.toolbox.register("attr_orientation", random.randint, 0, 7)
         self.toolbox.register("attr_x", random.randint, 1, width-2)
         self.toolbox.register("attr_y", random.randint, 1, height-2)
@@ -156,20 +156,19 @@ class PresentPackingGA:
 
         num_placements = len(metrics_list)
 
+        total_collisions = 0.0
         total_norm_xor = 0.0
-        total_norm_collisions = 0.0
         total_norm_adj_score = 0.0
 
         for metrics in metrics_list:
+            total_collisions += metrics.collisions
             total_norm_xor += metrics.norm_xor
-            total_norm_collisions += metrics.norm_collisions
             total_norm_adj_score += metrics.norm_adj_score
 
         avg_xor = total_norm_xor / num_placements
-        avg_collisions = total_norm_collisions / num_placements
         avg_adj = total_norm_adj_score / num_placements
 
-        return (avg_xor, avg_collisions, avg_adj)
+        return (total_collisions, avg_xor, avg_adj)
 
     def run_can_fit(self, cxpb=0.4, mutpb=0.2, ngen=100) -> bool:
         """ Runs evolutionary algorithm, returns true if found fitting solution """
@@ -179,8 +178,8 @@ class PresentPackingGA:
                             toolbox=self.toolbox, cxpb=cxpb, mutpb=mutpb, ngen=ngen, halloffame=hof)
 
         best_individual = hof[0]
-        _, collisions, _ = best_individual.fitness.values
-        print(best_individual.fitness.values)
-        if collisions == 0:
-            return True
-        return False
+        collisions, _xor_score, _adj_score = best_individual.fitness.values
+
+        if collisions:
+            return False
+        return True

@@ -8,8 +8,8 @@ from ga_types import Gene, Present, PresentOrientation
 @dataclass
 class PlacementMetrics:
     """ Represents scoring of each placement """
+    collisions: int
     norm_xor: float
-    norm_collisions: float
     norm_adj_score: float
 
 
@@ -66,7 +66,7 @@ class PlacementArea:
 
         # get count of points with other presents in
         adj_items += sum(1 for x, y in filtered_coords if (
-            self.area[x] >> y) & 1)
+            self.area[y] >> x) & 1)
 
         # return normalised adjacency score
         return adj_items / len(adj_coords)
@@ -86,21 +86,20 @@ class PlacementArea:
         for present_row, window_row in self._get_present_window_rows(placement_gene):
             collisions += bin(present_row & window_row).count('1')
             xor_score += bin(present_row ^ window_row).count('1')
-            bitmask.append((present_row ^ window_row) << placement_gene.y-1)
+            bitmask.append((present_row ^ window_row) << placement_gene.x-1)
 
         # Calculate adjacency score
         norm_adj_score = self._get_adjacency_score(
             placement_gene)
 
-        # Normalize metrics
+        # Normalize xor
         norm_xor = xor_score / 9 if xor_score > 0 else 0
-        norm_collisions = collisions / 9 if collisions > 0 else 0
 
         return (
             PlacementMetrics(
-                norm_xor=norm_xor,
-                norm_collisions=norm_collisions,
-                norm_adj_score=norm_adj_score,
+                collisions,
+                norm_xor,
+                norm_adj_score,
             ),
             bitmask
         )
@@ -108,10 +107,10 @@ class PlacementArea:
     def _get_window(self, x: int, y: int) -> list[int]:
         # get 3 rows from window with i in centre
         window: list[int] = []
-        top_row_idx = x-1
-        bottom_row_idx = x+1
+        top_row_idx = y-1
+        bottom_row_idx = y+1
         for row in range(top_row_idx, bottom_row_idx+1):
-            shift = y-1
+            shift = x-1
             window.append((self.area[row] >> shift) & self.WINDOW_ROW_MASK)
         return window
 
@@ -122,7 +121,7 @@ class PlacementArea:
             yield present_row, window_row
 
     def _apply_placement(self, placement_gene: Gene, bitmask: list[int]):
-        mask_start, mask_end = placement_gene.x-1, placement_gene.x+2
+        mask_start, mask_end = placement_gene.y-1, placement_gene.y+2
         for present_row, area_idx in enumerate(range(mask_start, mask_end)):
             self.area[area_idx] |= bitmask[present_row]
 
