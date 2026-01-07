@@ -168,12 +168,19 @@ class PresentPackingGA:
         """ Evaluates placement """
         area = PlacementArea(*self.container_dims, self.presents)
 
-        metrics_list: list[PlacementMetrics] = []
+        genes = []
 
+        # place all presents
         for gene_data in individual:
             gene = Gene(*gene_data)
-            placement_metrics = area.place_present(gene)
-            metrics_list.append(placement_metrics)
+            area.place_present(gene)
+            genes.append(gene)
+
+        metrics_list: list[PlacementMetrics] = []
+
+        # evaluate placements
+        for gene in genes:
+            metrics_list.append(area.analyse_placement(gene))
 
         num_placements = len(metrics_list)
 

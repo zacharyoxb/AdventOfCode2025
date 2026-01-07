@@ -4,16 +4,13 @@ from typing import TypeAlias
 import numpy as np
 from numpy.typing import NDArray
 
-PresentMatrix: TypeAlias = NDArray[np.int8]
-PresentMatrices: TypeAlias = list[NDArray[np.int8]]
-
-PresentOrientation: TypeAlias = list[int]
+PresentMatrix: TypeAlias = NDArray[np.int32]
 
 
 @dataclass
 class Present:
     """ Represents every present rotation as a bitmask """
-    masks: list[PresentOrientation]
+    masks: list[PresentMatrix]
 
     @classmethod
     def from_matrix(cls, matrix: PresentMatrix) -> 'Present':
@@ -24,36 +21,8 @@ class Present:
 
         return cls(masks=masks)
 
-    @staticmethod
-    def _matrix_to_bitmask(matrix: PresentMatrix) -> PresentOrientation:
-        """ Convert 3x3 matrix to three 3-digit binary numbers (one per row) """
-        binary_rows = []
-
-        for row in matrix:
-            # Convert each row to a 3-digit binary number
-            binary_str = ''
-            for val in row:
-                binary_str += '1' if val else '0'
-
-            binary_rows.append(int(binary_str, 2))
-
-        return binary_rows
-
-    @staticmethod
-    def _bitmask_to_matrix(bitmask: list[int]) -> PresentMatrix:
-        """ Convert bitmask back to 3x3 matrix """
-        matrix = []
-        for row_mask in bitmask:
-            row = []
-            # Extract bits from binary number
-            for i in range(2, -1, -1):  # Most significant bit first
-                bit = (row_mask >> i) & 1
-                row.append(bit)
-            matrix.append(row)
-        return np.array(matrix, dtype=np.int8)
-
     @classmethod
-    def _get_mask_orientation(cls, mask: PresentMatrix, mutation: int):
+    def _get_mask_orientation(cls, mask: PresentMatrix, mutation: int) -> PresentMatrix:
         """ Rotate grid by specified number of 90-degree rotations (0-7)
         0: no rotation
         1: 90° right / clockwise
@@ -77,4 +46,4 @@ class Present:
         mutated = np.rot90(mutated, k=-rot)
 
         # return bitmask
-        return cls._matrix_to_bitmask(mutated)
+        return mutated

@@ -70,7 +70,7 @@ if __name__ == "__main__":
 
         binary_matrix: list[list[int]] = [[1 if char == '#' else 0 for char in row]
                                           for row in split_matrix]
-        extracted_present_matrices.append(np.array(binary_matrix))
+        extracted_present_matrices.append(np.array(binary_matrix, np.int32))
 
     # get all areas we will insert into and indexes of shapes
     REGION_PATTERN = r'(\d+)x(\d+):\s*((?:\d+\s*)+)(?=\n|$)'

@@ -1,8 +1,9 @@
 """ Helper module for GA fitness: places in area, gives score """
 from dataclasses import dataclass, field
-from typing import List
 
-from ga_types import Gene, Present, PresentOrientation
+import numpy as np
+from ga_types import Gene, Present
+from ga_types.present import PresentMatrix
 
 
 @dataclass
@@ -19,26 +20,34 @@ class PlacementArea:
     width: int
     height: int
     presents: list[Present]
-    area: List[int] = field(init=False)
-
-    # Const
-    WINDOW_ROW_MASK = 0x7  # 111 in binary
+    area: PresentMatrix = field(init=False)
 
     def __post_init__(self):
-        self.area = [0] * self.height
+        self.area = np.zeros((self.height, self.width), np.int32)
 
-    def _get_adjacency_score(self, placement_gene: Gene) -> float:
+    def _get_present_to_place(self, placement_gene: Gene) -> PresentMatrix:
+        return self.presents[placement_gene.present_idx].masks[placement_gene.orientation]
+
+    def _get_placement_window(self, placement_gene: Gene):
+        x_start = placement_gene.x - 1
+        x_end = placement_gene.x + 2  # (slice end is exclusive)
+        y_start = placement_gene.y - 1
+        y_end = placement_gene.y + 2
+
+        window = self.area[y_start:y_end, x_start:x_end]
+
+        return window
+
+    def _get_adjacency_score(self, placement_gene: Gene, present: PresentMatrix) -> float:
         top_left_x = placement_gene.x - 1
         top_left_y = placement_gene.y - 1
-        present = self._get_present_to_place(placement_gene)
 
         # get coords of all present 1s
-        present_coords = [
-            (top_left_x + i, top_left_y + j)
-            for i, row in enumerate(present)
-            for j, digit in enumerate(bin(row)[2:])
-            if digit == '1'
-        ]
+        present_coords = []
+        for idx in np.ndindex(present.shape):  # (row, col) iterator
+            if present[idx] == 1:
+                present_coords.append(
+                    (idx[1] + top_left_x, idx[0] + top_left_y))
 
         adj_coords = set()
 
@@ -55,84 +64,58 @@ class PlacementArea:
             })
 
         # filter out out of bounds coords
-        filtered_coords = {
+        filtered_coords = [
             (x, y)
             for x, y in adj_coords
             if 0 <= x < self.width and 0 <= y < self.height
-        }
+        ]
 
         # add amount of out of bounds coords
         adj_items = len(adj_coords) - len(filtered_coords)
 
         # get count of points with other presents in
-        adj_items += sum(1 for x, y in filtered_coords if (
-            self.area[y] >> x) & 1)
+        adj_items += sum(1 for x, y in filtered_coords if
+                         self.area[y, x] == 1)
 
         # return normalised adjacency score
         return adj_items / len(adj_coords)
 
-    def _get_present_to_place(self, placement_gene: Gene) -> PresentOrientation:
-        return self.presents[placement_gene.present_idx].masks[placement_gene.orientation]
-
-    def _analyze_placement(
+    def analyse_placement(
         self,
         placement_gene: Gene,
-    ) -> tuple[PlacementMetrics, list[int]]:
-        collisions = 0
-        xor_score = 0
-        bitmask = []
+    ) -> PlacementMetrics:
+        """ Analyses how good placement is, returns placement metrics """
 
-        # Process each row of the present
-        for present_row, window_row in self._get_present_window_rows(placement_gene):
-            collisions += bin(present_row & window_row).count('1')
-            xor_score += bin(present_row ^ window_row).count('1')
-            bitmask.append((present_row ^ window_row) << placement_gene.x-1)
+        area_window = self._get_placement_window(placement_gene)
+        present = self._get_present_to_place(placement_gene)
+
+        # get state before present was placed, clamp incase -1
+        area_window[present] -= 1
+        area_window = np.maximum(area_window, 0)
+
+        # get scores
+        collisions = int(np.sum(area_window * present))
+        xor_score = int(np.count_nonzero(
+            (area_window > 0) ^ (present.astype(bool))))
 
         # Calculate adjacency score
         norm_adj_score = self._get_adjacency_score(
-            placement_gene)
+            placement_gene, present)
 
         # Normalize xor
         norm_xor = xor_score / 9 if xor_score > 0 else 0
 
-        return (
-            PlacementMetrics(
-                collisions,
-                norm_xor,
-                norm_adj_score,
-            ),
-            bitmask
+        return PlacementMetrics(
+            collisions,
+            norm_xor,
+            norm_adj_score,
         )
 
-    def _get_window(self, x: int, y: int) -> list[int]:
-        # get 3 rows from window with i in centre
-        window: list[int] = []
-        top_row_idx = y-1
-        bottom_row_idx = y+1
-        for row in range(top_row_idx, bottom_row_idx+1):
-            shift = x-1
-            window.append((self.area[row] >> shift) & self.WINDOW_ROW_MASK)
-        return window
+    def place_present(self, placement_gene: Gene):
+        """ Places present in area """
+        top_left_x = placement_gene.x - 1
+        top_left_y = placement_gene.y - 1
 
-    def _get_present_window_rows(self, placement_gene: Gene):
         present = self._get_present_to_place(placement_gene)
-        window = self._get_window(placement_gene.x, placement_gene.y)
-        for present_row, window_row in zip(present, window):
-            yield present_row, window_row
 
-    def _apply_placement(self, placement_gene: Gene, bitmask: list[int]):
-        mask_start, mask_end = placement_gene.y-1, placement_gene.y+2
-        for present_row, area_idx in enumerate(range(mask_start, mask_end)):
-            self.area[area_idx] |= bitmask[present_row]
-
-    def place_present(self, placement_gene: Gene) -> PlacementMetrics:
-        """ Places present in area returns score """
-
-        # Analyze the placement
-        placement_metrics, bitmask = self._analyze_placement(placement_gene)
-
-        # Apply the placement to the area
-        self._apply_placement(placement_gene, bitmask)
-
-        # Calculate and return fitness
-        return placement_metrics
+        self.area[top_left_y:top_left_y+3, top_left_x:top_left_x+3] += present
