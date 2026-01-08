@@ -70,7 +70,7 @@ class PresentPackingGA:
         self.toolbox.register("mate", self.two_point_crossover)
         self.toolbox.register("mutate", self.mutate,
                               orientpb=0.6, xpb=0.5, ypb=0.5)
-        self.toolbox.register("select", tools.selTournament, tournsize=3)
+        self.toolbox.register("select", tools.selNSGA2)
         self.toolbox.register("elitism", tools.selBest, k=10)
 
     def create_gene(self, present_idx) -> tuple[int, int, int, int]:
@@ -273,7 +273,8 @@ class PresentPackingGA:
 
         for gen in range(config.ngen):
             # Select elites
-            elites = self.toolbox.elitism(population)
+            k = int(config.mu * 0.02)
+            elites = self.toolbox.elitism(population, k=k)
 
             # Generate offspring
             offspring = algorithms.varOr(
