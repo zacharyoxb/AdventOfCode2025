@@ -215,73 +215,83 @@ class PresentPackingGA:
         mutpb = 0.4
         ngen = 200
 
-    def eu_mu_plus_lambda_custom(self, config: GAConfig = GAConfig()):
-        """ Custom implementation of deap function that can exit when solution is found """
-        population = self.toolbox.population(n=config.mu)
-
-        # get statistics
-        stats = tools.Statistics(lambda ind: ind.fitness.values)
-        stats.register("min_coll", lambda fits: np.min(
-            [f[0] for f in fits]))
-        stats.register("min_xor", lambda fits: np.min(
-            [f[1] for f in fits]))
-        stats.register("min_adj", lambda fits: np.min(
-            [f[2] for f in fits]
-        ))
-
-        # Print header once
+    def _print_generation_header(self):
+        """Prints the generation statistics header"""
         print(
             f"{'gen':<6} {'evals':<8} {'min_coll':<10} {'min_xor':<10} {'min_adj':<10}")
         print("-" * 46)
 
-        # Evaluate initial population
+    def _evaluate_population(self, population):
+        """Evaluates all invalid individuals in a population"""
         invalid_ind = [ind for ind in population if not ind.fitness.valid]
+        if not invalid_ind:
+            return 0
+
         fitnesses = self.toolbox.map(self.toolbox.evaluate, invalid_ind)
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
+        return len(invalid_ind)
+
+    def _select_with_elitism(self, population, elites, offspring, mu):
+        """Performs selection while preserving elites"""
+        non_elite_pop = [ind for ind in population if ind not in elites]
+        combined_pool = non_elite_pop + offspring
+        selected = self.toolbox.select(combined_pool, mu - len(elites))
+        return elites + selected
+
+    def _get_population_stats(self, population):
+        """Extracts key statistics from population"""
+        collisions = [ind.fitness.values[0]
+                      for ind in population if ind.fitness.valid]
+        xor_scores = [ind.fitness.values[1]
+                      for ind in population if ind.fitness.valid]
+        adj_scores = [ind.fitness.values[2]
+                      for ind in population if ind.fitness.valid]
+
+        return {
+            'min_coll': np.min(collisions) if collisions else 0,
+            'min_xor': np.min(xor_scores) if xor_scores else 0,
+            'min_adj': np.min(adj_scores) if adj_scores else 0,
+            'zero_count': sum(1 for c in collisions if c == 0)
+        }
+
+    def _print_generation_stats(self, gen, eval_count, stats):
+        """Prints statistics for a single generation"""
+        print(f"{gen:<6} {eval_count:<8} "
+              f"{stats['min_coll']:<10.1f} {stats['min_xor']:<10.1f} "
+              f"{stats['min_adj']:<10.1f}")
+
+    def eu_mu_plus_lambda_custom(self, config: GAConfig = GAConfig()):
+        """Custom implementation of deap function that can exit when solution is found"""
+        population = self.toolbox.population(n=config.mu)
+
+        # Print header
+        self._print_generation_header()
+
+        # Evaluate initial population
+        self._evaluate_population(population)
 
         for gen in range(config.ngen):
+            # Select elites
             elites = self.toolbox.elitism(population)
 
-            # Generate lambda_ offspring using varOr
+            # Generate offspring
             offspring = algorithms.varOr(
                 population, self.toolbox, config.lambda_, config.cxpb, config.mutpb)
 
-            # Evaluate only the new offspring
-            invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-            fitnesses = self.toolbox.map(self.toolbox.evaluate, invalid_ind)
-            for ind, fit in zip(invalid_ind, fitnesses):
-                ind.fitness.values = fit
+            # Evaluate offspring
+            invalid_count = self._evaluate_population(offspring)
 
-            # Make sure elites can't be selected
-            non_elite_pop = [ind for ind in population if ind not in elites]
-            combined_pool = non_elite_pop + offspring
+            # Select new population with elitism
+            population[:] = self._select_with_elitism(
+                population, elites, offspring, config.mu)
 
-            # Select remaining individuals (mu - number of elites)
-            selected = self.toolbox.select(
-                combined_pool, config.mu - len(elites))
+            # Get and print stats
+            stats = self._get_population_stats(population)
+            self._print_generation_stats(gen, invalid_count, stats)
 
-            # 5. Form new population: elites + selected others
-            population[:] = elites + selected
-
-            # print stats
-            collisions = [ind.fitness.values[0]
-                          for ind in population if ind.fitness.valid]
-            xor_scores = [ind.fitness.values[1]
-                          for ind in population if ind.fitness.valid]
-            adj_scores = [ind.fitness.values[2]
-                          for ind in population if ind.fitness.valid]
-
-            print(f"{gen:<6} {len(invalid_ind):<8} "
-                  f"{np.min(collisions):<10.1f} {np.min(xor_scores):<10.1f} "
-                  f"{np.min(adj_scores):<10.1f}")
-
-            has_zero_collisions = any(
-                ind.fitness.values[0] == 0 for ind in population if ind.fitness.valid
-            )
-
-            # if zero collisions, return True
-            if has_zero_collisions:
+            # Check for solution
+            if stats['zero_count'] > 0:
                 print("\nSolution found!\n\n")
                 return True
 
