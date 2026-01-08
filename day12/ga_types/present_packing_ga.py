@@ -172,8 +172,8 @@ class PresentPackingGA:
 
         return (individual,)
 
-    def evaluate(self, individual: 'creator.Individual') -> tuple:
-        """ Evaluates placement """
+    def evaluate(self, individual: 'creator.Individual') -> tuple[float, float, float]:
+        """ Evaluates placement, returns tuple of weights """
         area = PlacementArea(*self.container_dims, self.presents)
 
         genes = []
@@ -222,7 +222,7 @@ class PresentPackingGA:
         print("-" * 46)
 
     def _evaluate_population(self, population):
-        """Evaluates all invalid individuals in a population"""
+        """ Evaluates all invalid individuals in a population """
         invalid_ind = [ind for ind in population if not ind.fitness.valid]
         if not invalid_ind:
             return 0

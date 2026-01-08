@@ -2,6 +2,7 @@
 from dataclasses import dataclass, field
 
 import numpy as np
+
 from ga_types import Gene, Present
 from ga_types.present import PresentMatrix
 
@@ -80,6 +81,15 @@ class PlacementArea:
         # return normalised adjacency score
         return adj_items / len(adj_coords)
 
+    def place_present(self, placement_gene: Gene):
+        """ Places present in area """
+        top_left_x = placement_gene.x - 1
+        top_left_y = placement_gene.y - 1
+
+        present = self._get_present_to_place(placement_gene)
+
+        self.area[top_left_y:top_left_y+3, top_left_x:top_left_x+3] += present
+
     def analyse_placement(
         self,
         placement_gene: Gene,
@@ -112,12 +122,3 @@ class PlacementArea:
             norm_xor,
             norm_adj_score,
         )
-
-    def place_present(self, placement_gene: Gene):
-        """ Places present in area """
-        top_left_x = placement_gene.x - 1
-        top_left_y = placement_gene.y - 1
-
-        present = self._get_present_to_place(placement_gene)
-
-        self.area[top_left_y:top_left_y+3, top_left_x:top_left_x+3] += present
