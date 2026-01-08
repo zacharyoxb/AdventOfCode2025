@@ -3,8 +3,7 @@ import re
 
 import numpy as np
 
-from ga_types import Present, PresentMatrix
-from ga_types.present_packing_ga import PresentPackingGA
+from ga_types import Present, PresentMatrix, Plotter, PresentPackingGA
 
 
 def can_fit(
@@ -17,7 +16,9 @@ def can_fit(
     genetic_alg = PresentPackingGA(
         (width, height), presents, present_count)
 
-    return genetic_alg.eu_mu_plus_lambda_custom()
+    plotter = Plotter()
+
+    return genetic_alg.eu_mu_plus_lambda_custom(plotter=plotter)
 
 
 def info_to_list(placement_info: list[tuple[str, str, str]]) -> list[tuple[int, int, list[int]]]:

@@ -2,11 +2,12 @@
 
 from dataclasses import dataclass
 import random
+from typing import Optional
 
 from deap import algorithms, base, creator, tools
 import numpy as np
 
-from ga_types import Present, Gene, PlacementArea, PlacementMetrics
+from ga_types import Present, Gene, PlacementArea, PlacementMetrics, Plotter
 
 
 class PresentPackingGA:
@@ -261,7 +262,21 @@ class PresentPackingGA:
               f"{stats['min_coll']:<10.1f} {stats['min_xor']:<10.1f} "
               f"{stats['min_adj']:<10.1f}")
 
-    def eu_mu_plus_lambda_custom(self, config: GAConfig = GAConfig()):
+    def _plot_best(self, plotter: Plotter, population: 'creator.Population'):
+        # get best
+        best = min(population, key=lambda ind: ind.fitness.values[0])
+        # get best individuals' plot
+        area = PlacementArea(*self.container_dims, self.presents)
+        for gene_data in best:
+            gene = Gene(*gene_data)
+            area.place_present(gene)
+            plotter.update(area.area)
+
+    def eu_mu_plus_lambda_custom(
+            self,
+            config: GAConfig = GAConfig(),
+            plotter: Optional[Plotter] = None
+    ) -> bool:
         """Custom implementation of deap function that can exit when solution is found"""
         population = self.toolbox.population(n=config.mu)
 
@@ -270,6 +285,10 @@ class PresentPackingGA:
 
         # Evaluate initial population
         self._evaluate_population(population)
+
+        # Plot best layout
+        if plotter:
+            self._plot_best(plotter, population)
 
         for gen in range(config.ngen):
             # Select elites
@@ -295,6 +314,9 @@ class PresentPackingGA:
             if stats['zero_count'] > 0:
                 print("\nSolution found!\n\n")
                 return True
+
+            if gen % 5 == 0 and plotter:
+                self._plot_best(plotter, population)
 
         print("\nNo solution found.\n\n")
         return False
