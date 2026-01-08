@@ -3,7 +3,7 @@ import re
 
 import numpy as np
 
-from ga_types import Present, PresentMatrix, Plotter, PresentPackingGA
+from ga_types import Present, PresentMatrix,  PresentPackingGA, Plotter
 
 
 def can_fit(

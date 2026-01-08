@@ -5,7 +5,6 @@ import random
 from typing import Optional
 
 from deap import algorithms, base, creator, tools
-import numpy as np
 
 from ga_types import Present, Gene, PlacementArea, PlacementMetrics, Plotter
 
@@ -70,7 +69,7 @@ class PresentPackingGA:
         self.toolbox.register("evaluate", self.evaluate)
         self.toolbox.register("mate", self.two_point_crossover)
         self.toolbox.register("mutate", self.mutate,
-                              orientpb=0.6, xpb=0.5, ypb=0.5)
+                              orientpb=0.8, xpb=0.5, ypb=0.5)
         self.toolbox.register("select", tools.selNSGA2)
         self.toolbox.register("elitism", tools.selBest, k=10)
 
@@ -219,7 +218,7 @@ class PresentPackingGA:
     def _print_generation_header(self):
         """Prints the generation statistics header"""
         print(
-            f"{'gen':<6} {'evals':<8} {'min_coll':<10} {'min_xor':<10} {'min_adj':<10}")
+            f"{'gen':<6} {'evals':<8} {'best_coll':<10} {'best_xor':<10} {'best_adj':<10}")
         print("-" * 46)
 
     def _evaluate_population(self, population):
@@ -242,25 +241,25 @@ class PresentPackingGA:
 
     def _get_population_stats(self, population):
         """Extracts key statistics from population"""
-        collisions = [ind.fitness.values[0]
-                      for ind in population if ind.fitness.valid]
-        xor_scores = [ind.fitness.values[1]
-                      for ind in population if ind.fitness.valid]
-        adj_scores = [ind.fitness.values[2]
-                      for ind in population if ind.fitness.valid]
+        valid_i_val = [
+            (ind.fitness.values)
+            for i, ind in enumerate(population)
+            if ind.fitness.valid
+        ]
+
+        best_coll, best_xor, best_adj = min(valid_i_val, key=lambda x: x[0])
 
         return {
-            'min_coll': np.min(collisions) if collisions else 0,
-            'min_xor': np.min(xor_scores) if xor_scores else 0,
-            'min_adj': np.min(adj_scores) if adj_scores else 0,
-            'zero_count': sum(1 for c in collisions if c == 0)
+            'best_coll': best_coll,
+            'best_xor': best_xor,
+            'best_adj': best_adj,
         }
 
     def _print_generation_stats(self, gen, eval_count, stats):
         """Prints statistics for a single generation"""
         print(f"{gen:<6} {eval_count:<8} "
-              f"{stats['min_coll']:<10.1f} {stats['min_xor']:<10.1f} "
-              f"{stats['min_adj']:<10.1f}")
+              f"{stats['best_coll']:<10.1f} {stats['best_xor']:<10.1f} "
+              f"{stats['best_adj']:<10.1f}")
 
     def _plot_best(self, plotter: Plotter, population: 'creator.Population'):
         # get best
@@ -272,12 +271,24 @@ class PresentPackingGA:
             area.place_present(gene)
             plotter.update(area.area)
 
+    def _catastrophic_restart(self, population):
+        """ Refreshes population to prevent plateaus """
+        # Keep best 5%
+        keep_n = max(1, int(len(population) * 0.05))
+        best = tools.selBest(population, keep_n)
+
+        # Create new population
+        new_pop = self.toolbox.population(n=len(population) - keep_n)
+
+        # Return combined
+        return best + new_pop
+
     def eu_mu_plus_lambda_custom(
             self,
             config: GAConfig = GAConfig(),
             plotter: Optional[Plotter] = None
     ) -> bool:
-        """Custom implementation of deap function that can exit when solution is found"""
+        """ Custom implementation of deap function that can exit when solution is found """
         population = self.toolbox.population(n=config.mu)
 
         # Print header
@@ -291,6 +302,11 @@ class PresentPackingGA:
             self._plot_best(plotter, population)
 
         for gen in range(config.ngen):
+            # If divisible by 15, do catastrophic restart
+            if gen > 0 and gen % 15 == 0:
+                population = self._catastrophic_restart(population)
+                self._evaluate_population(population)
+
             # Select elites
             k = int(config.mu * 0.02)
             elites = self.toolbox.elitism(population, k=k)
@@ -311,7 +327,7 @@ class PresentPackingGA:
             self._print_generation_stats(gen, invalid_count, stats)
 
             # Check for solution
-            if stats['zero_count'] > 0:
+            if stats['best_coll'] == 0:
                 print("\nSolution found!\n\n")
                 return True
 
