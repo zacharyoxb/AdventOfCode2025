@@ -1,8 +1,10 @@
 """ Genetic algorithm for placement """
 
+from dataclasses import dataclass
 import random
 
 from deap import algorithms, base, creator, tools
+import numpy as np
 
 from ga_types import Present, Gene, PlacementArea, PlacementMetrics
 
@@ -159,6 +161,11 @@ class PresentPackingGA:
                     y + random.randint(-50, 50), 1, height-2)
                 del_fitness = True
 
+             # Occasionally swap two rectangles' positions entirely
+            if random.random() < 0.1:
+                j = random.randrange(len(individual))
+                individual[i], individual[j] = individual[j], individual[i]
+
             if del_fitness:
                 del individual.fitness.values
             individual[i] = (idx, orientation, x, y)
@@ -199,21 +206,84 @@ class PresentPackingGA:
 
         return (total_collisions, avg_xor, avg_adj)
 
-    def run_can_fit(self, mu=100, lambda_=400, cxpb=0.6, mutpb=0.4, ngen=200) -> bool:
-        """ Runs evolutionary algorithm, returns true if found fitting solution """
-        population = self.toolbox.population(n=mu+lambda_)
-        hof = tools.HallOfFame(10)
+    @dataclass
+    class GAConfig:
+        """ Config for ga algorithm"""
+        mu = 100
+        lambda_ = 400
+        cxpb = 0.6
+        mutpb = 0.4
+        ngen = 200
 
-        algorithms.eaMuPlusLambda(population=population, toolbox=self.toolbox,
-                                  mu=mu, lambda_=lambda_, cxpb=cxpb, mutpb=mutpb,
-                                  ngen=ngen, halloffame=hof)
+    def eu_mu_plus_lambda_custom(self, config: GAConfig = GAConfig()):
+        """ Custom implementation of deap function that can exit when solution is found """
+        population = self.toolbox.population(n=config.mu)
 
-        best_individual = hof[0]
-        collisions, _xor_score, _adj_score = best_individual.fitness.values
+        # get statistics
+        stats = tools.Statistics(lambda ind: ind.fitness.values)
+        stats.register("min_coll", lambda fits: np.min(
+            [f[0] for f in fits]))
+        stats.register("min_xor", lambda fits: np.min(
+            [f[1] for f in fits]))
+        stats.register("min_adj", lambda fits: np.min(
+            [f[2] for f in fits]
+        ))
+
+        # Print header once
         print(
-            f"Collisions: {collisions}, xor score: {_xor_score}, adjacency score: {_adj_score}"
-        )
+            f"{'gen':<6} {'evals':<8} {'min_coll':<10} {'min_xor':<10} {'min_adj':<10}")
+        print("-" * 46)
 
-        if collisions:
-            return False
-        return True
+        # Evaluate initial population
+        invalid_ind = [ind for ind in population if not ind.fitness.valid]
+        fitnesses = self.toolbox.map(self.toolbox.evaluate, invalid_ind)
+        for ind, fit in zip(invalid_ind, fitnesses):
+            ind.fitness.values = fit
+
+        for gen in range(config.ngen):
+            elites = self.toolbox.elitism(population)
+
+            # Generate lambda_ offspring using varOr
+            offspring = algorithms.varOr(
+                population, self.toolbox, config.lambda_, config.cxpb, config.mutpb)
+
+            # Evaluate only the new offspring
+            invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+            fitnesses = self.toolbox.map(self.toolbox.evaluate, invalid_ind)
+            for ind, fit in zip(invalid_ind, fitnesses):
+                ind.fitness.values = fit
+
+            # Make sure elites can't be selected
+            non_elite_pop = [ind for ind in population if ind not in elites]
+            combined_pool = non_elite_pop + offspring
+
+            # Select remaining individuals (mu - number of elites)
+            selected = self.toolbox.select(
+                combined_pool, config.mu - len(elites))
+
+            # 5. Form new population: elites + selected others
+            population[:] = elites + selected
+
+            # print stats
+            collisions = [ind.fitness.values[0]
+                          for ind in population if ind.fitness.valid]
+            xor_scores = [ind.fitness.values[1]
+                          for ind in population if ind.fitness.valid]
+            adj_scores = [ind.fitness.values[2]
+                          for ind in population if ind.fitness.valid]
+
+            print(f"{gen:<6} {len(invalid_ind):<8} "
+                  f"{np.min(collisions):<10.1f} {np.min(xor_scores):<10.1f} "
+                  f"{np.min(adj_scores):<10.1f}")
+
+            has_zero_collisions = any(
+                ind.fitness.values[0] == 0 for ind in population if ind.fitness.valid
+            )
+
+            # if zero collisions, return True
+            if has_zero_collisions:
+                print("\nSolution found!\n\n")
+                return True
+
+        print("\nNo solution found.\n\n")
+        return False

@@ -17,7 +17,7 @@ def can_fit(
     genetic_alg = PresentPackingGA(
         (width, height), presents, present_count)
 
-    return genetic_alg.run_can_fit()
+    return genetic_alg.eu_mu_plus_lambda_custom()
 
 
 def info_to_list(placement_info: list[tuple[str, str, str]]) -> list[tuple[int, int, list[int]]]:
