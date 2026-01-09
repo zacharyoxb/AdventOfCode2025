@@ -7,7 +7,7 @@ from typing import Optional
 import numpy as np
 from deap import algorithms, base, creator, tools
 
-from ga_types import Present, Gene, PlacementArea, PlacementMetrics, Plotter
+from ga_types import Present, Gene, PlacementArea, Plotter
 
 
 class PresentPackingGA:
@@ -220,28 +220,11 @@ class PresentPackingGA:
             area.place_present(gene)
             genes.append(gene)
 
-        metrics_list: list[PlacementMetrics] = []
+        norm_non_empty = area.get_non_empty()
+        norm_non_coll = area.get_non_collisions()
+        norm_border_adj = area.get_border_adjacency_score()
 
-        # evaluate placements
-        for gene in genes:
-            metrics_list.append(area.analyse_placement(gene))
-
-        num_placements = len(metrics_list)
-
-        total_norm_collisions = 0.0
-        total_norm_xor = 0.0
-        total_norm_adj_score = 0.0
-
-        for metrics in metrics_list:
-            total_norm_collisions += metrics.norm_no_collisions
-            total_norm_xor += metrics.norm_xor
-            total_norm_adj_score += metrics.norm_adj_score
-
-        avg_no_coll = total_norm_collisions / num_placements
-        avg_xor = total_norm_xor / num_placements
-        avg_adj = total_norm_adj_score / num_placements
-
-        return (avg_no_coll, avg_xor, avg_adj)
+        return (norm_non_empty, norm_non_coll, norm_border_adj)
 
     @dataclass
     class GAConfig:
@@ -255,8 +238,9 @@ class PresentPackingGA:
     def _print_generation_header(self):
         """Prints the generation statistics header"""
         print(
-            f"{'gen':<6} {'evals':<8} {'best_no_coll':<10} {'best_xor':<10} {'best_adj':<10}")
-        print("-" * 46)
+            f"{'gen':<6} {'evals':<8} {'best_non_empty':<15} {'best_non_coll':<15}"
+            f"{'best_adj':<15}")
+        print("-" * 60)
 
     def _evaluate_population(self, population):
         """ Evaluates all invalid individuals in a population """
@@ -280,23 +264,24 @@ class PresentPackingGA:
         """Extracts key statistics from population"""
         valid_i_val = [
             (ind.fitness.values)
-            for i, ind in enumerate(population)
+            for ind in population
             if ind.fitness.valid
         ]
 
-        best_no_coll, best_xor, best_adj = max(valid_i_val, key=lambda x: x[0])
+        best_non_empty, best_coll, best_adj = max(
+            valid_i_val, key=lambda x: x[0])
 
         return {
-            'best_no_coll': best_no_coll,
-            'best_xor': best_xor,
-            'best_adj': best_adj,
+            'best_non_empty': best_non_empty,
+            'best_non_coll': best_coll,
+            'best_adj': best_adj
         }
 
     def _print_generation_stats(self, gen, eval_count, stats):
         """Prints statistics for a single generation"""
         print(f"{gen:<6} {eval_count:<8} "
-              f"{stats['best_no_coll']:<10.1f} {stats['best_xor']:<10.1f} "
-              f"{stats['best_adj']:<10.1f}")
+              f"{stats['best_non_empty']:<15f} {stats['best_non_coll']:<15f}"
+              f"{stats['best_adj']:<15f}")
 
     def _plot_best(self, plotter: Plotter, population: 'creator.Population'):
         # get best
@@ -364,7 +349,7 @@ class PresentPackingGA:
             self._print_generation_stats(gen, invalid_count, stats)
 
             # Check for solution
-            if stats['best_no_coll'] == 1:
+            if stats['best_non_coll'] == 1.0:
                 print("\nSolution found!\n\n")
                 return True
 

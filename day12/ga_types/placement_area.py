@@ -8,14 +8,6 @@ from ga_types.present import PresentMatrix
 
 
 @dataclass
-class PlacementMetrics:
-    """ Represents scoring of each placement """
-    norm_no_collisions: float
-    norm_xor: float
-    norm_adj_score: float
-
-
-@dataclass
 class PlacementArea:
     """ Manages the area to place in and the scoring of placements """
     width: int
@@ -39,48 +31,6 @@ class PlacementArea:
 
         return window.copy()
 
-    def _get_adjacency_score(self, placement_gene: Gene, present: PresentMatrix) -> float:
-        top_left_x = placement_gene.x - 1
-        top_left_y = placement_gene.y - 1
-
-        # get coords of all present 1s
-        present_coords = []
-        for idx in np.ndindex(present.shape):  # (row, col) iterator
-            if present[idx] == 1:
-                present_coords.append(
-                    (idx[1] + top_left_x, idx[0] + top_left_y))
-
-        adj_coords = set()
-
-        for x, y in present_coords:
-            adj_top_left_x = x - 1
-            adj_top_left_y = y - 1
-
-            # get coords adjacent to coord not in present_coords
-            adj_coords.update({
-                (adj_top_left_x + i, adj_top_left_y + j)
-                for i in range(3)
-                for j in range(3)
-                if (adj_top_left_x + i, adj_top_left_y + j) not in present_coords
-            })
-
-        # filter out out of bounds coords
-        filtered_coords = [
-            (x, y)
-            for x, y in adj_coords
-            if 0 <= x < self.width and 0 <= y < self.height
-        ]
-
-        # add amount of out of bounds coords
-        adj_items = len(adj_coords) - len(filtered_coords)
-
-        # get count of points with other presents in
-        adj_items += sum(1 for x, y in filtered_coords if
-                         self.area[y, x] == 1)
-
-        # return normalised adjacency score
-        return adj_items / len(adj_coords)
-
     def place_present(self, placement_gene: Gene):
         """ Places present in area """
         top_left_x = placement_gene.x - 1
@@ -90,39 +40,35 @@ class PlacementArea:
 
         self.area[top_left_y:top_left_y+3, top_left_x:top_left_x+3] += present
 
-    def analyse_placement(
-        self,
-        placement_gene: Gene,
-    ) -> PlacementMetrics:
-        """ Analyses how good placement is, returns placement metrics """
+    def get_non_empty(self):
+        """ Get amount of empty squares in area, normalised """
+        non_empty_cells = self.area.size - int(np.sum(self.area == 0))
+        norm_non_empty = non_empty_cells / self.area.size
+        return norm_non_empty
 
-        area_window = self._get_placement_window(placement_gene)
-        present = self._get_present_to_place(placement_gene)
+    def get_non_collisions(self):
+        """ Get amount of collisions in area, normalised """
+        collisions = int(np.sum(self.area > 1))
+        non_collisions = self.area.size - collisions
+        return non_collisions / self.area.size
 
-        # get collision score before reverting the window
-        occupied_no_collisions = int(np.sum(area_window == 1))
+    def get_border_adjacency_score(self):
+        """ Score for non-empty cells adjacent to borders """
+        # Get border indices
+        height, width = self.area.shape
 
-        # get state before present was placed, clamp incase -1
-        present_mask = present.astype(bool)
-        area_window[present_mask] -= 1
-        area_window = np.maximum(area_window, 0)
+        # Create masks for border rows and columns
+        top_border = self.area[0, :] > 0
+        bottom_border = self.area[-1, :] > 0
+        left_border = self.area[:, 0] > 0
+        right_border = self.area[:, -1] > 0
 
-        # Get scores
-        occupied_before = area_window > 0
-        xor_score = int(np.sum(occupied_before ^ present_mask))
+        # Count border-adjacent non-empty cells
+        border_non_empty = (np.sum(top_border) + np.sum(bottom_border) +
+                            np.sum(left_border) + np.sum(right_border))
 
-        # Normalise no collisions
-        norm_no_coll = occupied_no_collisions / 9 if occupied_no_collisions > 0 else 0
+        # Normalize by maximum possible border cells
+        max_border_cells = 2 * (height + width)
+        norm_score = border_non_empty / max_border_cells if max_border_cells > 0 else 0
 
-        # Calculate adjacency score
-        norm_adj_score = self._get_adjacency_score(
-            placement_gene, present)
-
-        # Normalise xor
-        norm_xor = xor_score / 9 if xor_score > 0 else 0
-
-        return PlacementMetrics(
-            norm_no_coll,
-            norm_xor,
-            norm_adj_score,
-        )
+        return float(norm_score)
