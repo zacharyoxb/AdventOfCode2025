@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import random
 from typing import Optional
 
+import numpy as np
 from deap import algorithms, base, creator, tools
 
 from ga_types import Present, Gene, PlacementArea, PlacementMetrics, Plotter
@@ -21,7 +22,7 @@ class PresentPackingGA:
         GA for packing presents in a container
 
         Args:
-            container_width, container_height: Size of container
+            container_dims: Size of container (width, height)
             presents: List of Present objects to pack
             present_count: amount of each present to put in the population
         """
@@ -32,6 +33,7 @@ class PresentPackingGA:
         self.present_count = present_count
         self.toolbox = base.Toolbox()
 
+        # get indexes for all presents we have to place
         self.required_present_indices = []
         for present_idx, count in enumerate(self.present_count):
             self.required_present_indices.extend([present_idx] * count)
@@ -46,7 +48,7 @@ class PresentPackingGA:
         if hasattr(creator, "Individual"):
             del creator.Individual
 
-        creator.create("MultiFitness", base.Fitness, weights=(-1.0, 1.0, 1.0))
+        creator.create("MultiFitness", base.Fitness, weights=(1.0, 1.0, 1.0))
         creator.create("Individual", list,
                        fitness=creator.MultiFitness)
 
@@ -54,10 +56,7 @@ class PresentPackingGA:
         """ Sets up deap algorithm """
 
         # Register attributes not including idx
-        width, height = self.container_dims
         self.toolbox.register("attr_orientation", random.randint, 0, 7)
-        self.toolbox.register("attr_x", random.randint, 1, width-2)
-        self.toolbox.register("attr_y", random.randint, 1, height-2)
 
         # Form genes / individuals / populations
         self.toolbox.register("gene", self.create_gene)
@@ -73,13 +72,19 @@ class PresentPackingGA:
         self.toolbox.register("select", tools.selNSGA2)
         self.toolbox.register("elitism", tools.selBest, k=10)
 
-    def create_gene(self, present_idx) -> tuple[int, int, int, int]:
+    def create_gene(
+        self,
+        present_idx: int,
+        orientation: int,
+        x: int,
+        y: int
+    ) -> tuple[int, int, int, int]:
         """ Creates gene of present_idx """
         return (
             present_idx,
-            self.toolbox.attr_orientation(),
-            self.toolbox.attr_x(),
-            self.toolbox.attr_y(),
+            orientation,
+            x,
+            y
         )
 
     def create_individual(self) -> 'creator.Individual':
@@ -87,10 +92,41 @@ class PresentPackingGA:
         # Start with required indices
         present_indices = self.required_present_indices
 
+        # get positions spread out evenly in area
+        width, height = self.container_dims
+        coords_needed = len(present_indices)
+
+        # Create a linear index for all possible positions
+        border = 1
+        all_x = np.arange(border, width - border)
+        all_y = np.arange(border, height - border)
+
+        # Create meshgrid of all positions
+        x_full, y_full = np.meshgrid(all_x, all_y)
+        all_positions = np.column_stack([x_full.ravel(), y_full.ravel()])
+
+        points = []
+
+        # If we need fewer points than available, sample evenly
+        if coords_needed < len(all_positions):
+            # Create N evenly spaced indices
+            indices = np.linspace(0, len(all_positions) -
+                                  1, coords_needed, dtype=int)
+            selected = all_positions[indices]
+            points = [(int(x), int(y)) for x, y in selected]
+        else:
+            # If we need more points than available, repeat or use all
+            points = [(int(x), int(y))
+                      for x, y in all_positions][:coords_needed]
+        # shuffle coordinates
+        random.shuffle(points)
+
+        orientation = self.toolbox.attr_orientation()
+
         # Create genes for each required present
         individual = []
-        for present_idx in present_indices:
-            individual.append(self.create_gene(present_idx))
+        for present_idx, (x, y) in zip(present_indices, points):
+            individual.append(self.create_gene(present_idx, orientation, x, y))
 
         return creator.Individual(individual)
 
@@ -192,19 +228,20 @@ class PresentPackingGA:
 
         num_placements = len(metrics_list)
 
-        total_collisions = 0.0
+        total_norm_collisions = 0.0
         total_norm_xor = 0.0
         total_norm_adj_score = 0.0
 
         for metrics in metrics_list:
-            total_collisions += metrics.collisions
+            total_norm_collisions += metrics.norm_no_collisions
             total_norm_xor += metrics.norm_xor
             total_norm_adj_score += metrics.norm_adj_score
 
+        avg_no_coll = total_norm_collisions / num_placements
         avg_xor = total_norm_xor / num_placements
         avg_adj = total_norm_adj_score / num_placements
 
-        return (total_collisions, avg_xor, avg_adj)
+        return (avg_no_coll, avg_xor, avg_adj)
 
     @dataclass
     class GAConfig:
@@ -218,7 +255,7 @@ class PresentPackingGA:
     def _print_generation_header(self):
         """Prints the generation statistics header"""
         print(
-            f"{'gen':<6} {'evals':<8} {'best_coll':<10} {'best_xor':<10} {'best_adj':<10}")
+            f"{'gen':<6} {'evals':<8} {'best_no_coll':<10} {'best_xor':<10} {'best_adj':<10}")
         print("-" * 46)
 
     def _evaluate_population(self, population):
@@ -247,10 +284,10 @@ class PresentPackingGA:
             if ind.fitness.valid
         ]
 
-        best_coll, best_xor, best_adj = min(valid_i_val, key=lambda x: x[0])
+        best_no_coll, best_xor, best_adj = max(valid_i_val, key=lambda x: x[0])
 
         return {
-            'best_coll': best_coll,
+            'best_no_coll': best_no_coll,
             'best_xor': best_xor,
             'best_adj': best_adj,
         }
@@ -258,7 +295,7 @@ class PresentPackingGA:
     def _print_generation_stats(self, gen, eval_count, stats):
         """Prints statistics for a single generation"""
         print(f"{gen:<6} {eval_count:<8} "
-              f"{stats['best_coll']:<10.1f} {stats['best_xor']:<10.1f} "
+              f"{stats['best_no_coll']:<10.1f} {stats['best_xor']:<10.1f} "
               f"{stats['best_adj']:<10.1f}")
 
     def _plot_best(self, plotter: Plotter, population: 'creator.Population'):
@@ -327,7 +364,7 @@ class PresentPackingGA:
             self._print_generation_stats(gen, invalid_count, stats)
 
             # Check for solution
-            if stats['best_coll'] == 0:
+            if stats['best_no_coll'] == 1:
                 print("\nSolution found!\n\n")
                 return True
 

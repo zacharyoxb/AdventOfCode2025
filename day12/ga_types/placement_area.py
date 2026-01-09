@@ -10,7 +10,7 @@ from ga_types.present import PresentMatrix
 @dataclass
 class PlacementMetrics:
     """ Represents scoring of each placement """
-    collisions: int
+    norm_no_collisions: float
     norm_xor: float
     norm_adj_score: float
 
@@ -99,26 +99,30 @@ class PlacementArea:
         area_window = self._get_placement_window(placement_gene)
         present = self._get_present_to_place(placement_gene)
 
-        present_mask = present.astype(bool)
+        # get collision score before reverting the window
+        occupied_no_collisions = int(np.sum(area_window == 1))
 
         # get state before present was placed, clamp incase -1
+        present_mask = present.astype(bool)
         area_window[present_mask] -= 1
         area_window = np.maximum(area_window, 0)
 
-        # get scores
-        collisions = int(np.sum(area_window * present))
-        occupied_before = area_window > 0  # Cells occupied before this gene
+        # Get scores
+        occupied_before = area_window > 0
         xor_score = int(np.sum(occupied_before ^ present_mask))
+
+        # Normalise no collisions
+        norm_no_coll = occupied_no_collisions / 9 if occupied_no_collisions > 0 else 0
 
         # Calculate adjacency score
         norm_adj_score = self._get_adjacency_score(
             placement_gene, present)
 
-        # Normalize xor
+        # Normalise xor
         norm_xor = xor_score / 9 if xor_score > 0 else 0
 
         return PlacementMetrics(
-            collisions,
+            norm_no_coll,
             norm_xor,
             norm_adj_score,
         )

@@ -9,7 +9,7 @@ PresentMatrix: TypeAlias = NDArray[np.int32]
 
 @dataclass
 class Present:
-    """ Represents every present rotation as a bitmask """
+    """ Represents every present rotation as an array """
     masks: list[PresentMatrix]
 
     @classmethod
