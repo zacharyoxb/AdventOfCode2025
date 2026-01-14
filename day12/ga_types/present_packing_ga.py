@@ -68,8 +68,8 @@ class PresentPackingGA:
         self.toolbox.register("evaluate", self.evaluate)
         self.toolbox.register("mate", self.two_point_crossover)
         self.toolbox.register("mutate", self.mutate,
-                              orientpb=0.8, xpb=0.5, ypb=0.5)
-        self.toolbox.register("select", tools.selNSGA2)
+                              orientpb=0.2, xpb=0.2, ypb=0.2)
+        self.toolbox.register("select", tools.selTournament, tournsize=3)
         self.toolbox.register("elitism", tools.selBest, k=10)
 
     def create_gene(
