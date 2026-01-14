@@ -7,7 +7,7 @@ matplotlib.use('TkAgg')
 
 
 class Plotter:
-    """ Class to visualise evolution of genetic algorithm"""
+    """ Class to visualise evolution of genetic algorithm """
 
     def __init__(self):
         self.fig, self.ax = plt.subplots(figsize=(10, 8))
@@ -35,14 +35,13 @@ class Plotter:
             # Simple white to green gradient
             return plt.cm.colors.LinearSegmentedColormap.from_list(
                 "custom", [(0, "#FFFFFF"), (1, "#008000")])
-        else:
-            # White(0) -> Green(mid) -> Red(1)
-            # Map: 0 -> white, 1/max_val -> green, 1 -> red
-            green_pos = 1.0 / max_val
-            return plt.cm.colors.LinearSegmentedColormap.from_list(
-                "custom",
-                [(0, "#FFFFFF"), (green_pos, "#008000"), (1, "#FF0000")]
-            )
+        # White(0) -> Green(mid) -> Red(1)
+        # Map: 0 -> white, 1/max_val -> green, 1 -> red
+        green_pos = 1.0 / max_val
+        return plt.cm.colors.LinearSegmentedColormap.from_list(
+            "custom",
+            [(0, "#FFFFFF"), (green_pos, "#008000"), (1, "#FF0000")]
+        )
 
     def update(self, data: NDArray[np.int32]):
         """ Update plot with new 2D integer array """
@@ -65,9 +64,6 @@ class Plotter:
             self.img.set_data(data)
             self.img.set_cmap(cmap)
             self.img.set_clim(vmin=0, vmax=max(1, max_val))
-
-        # Update title with current stats
-        self.ax.set_title(f"Max: {max_val} | Min: {int(np.min(data))}")
 
         # Redraw
         self.fig.canvas.draw_idle()

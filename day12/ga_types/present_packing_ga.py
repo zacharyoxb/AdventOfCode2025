@@ -43,14 +43,14 @@ class PresentPackingGA:
 
     def _setup_deap_types(self):
         """ Setup DEAP types """
-        if hasattr(creator, "MultiFitness"):
-            del creator.MultiFitness
+        if hasattr(creator, "Fitness"):
+            del creator.Fitness
         if hasattr(creator, "Individual"):
             del creator.Individual
 
-        creator.create("MultiFitness", base.Fitness, weights=(1.0, 1.0, 1.0))
+        creator.create("Fitness", base.Fitness, weights=(1.0,))
         creator.create("Individual", list,
-                       fitness=creator.MultiFitness)
+                       fitness=creator.Fitness)
 
     def setup_deap(self):
         """ Sets up deap algorithm """
@@ -208,23 +208,17 @@ class PresentPackingGA:
 
         return (individual,)
 
-    def evaluate(self, individual: 'creator.Individual') -> tuple[float, float, float]:
+    def evaluate(self, individual: 'creator.Individual') -> tuple[float]:
         """ Evaluates placement, returns tuple of weights """
         area = PlacementArea(*self.container_dims, self.presents)
-
-        genes = []
 
         # place all presents
         for gene_data in individual:
             gene = Gene(*gene_data)
-            area.place_present(gene)
-            genes.append(gene)
+            if not area.place_present(gene):
+                break
 
-        norm_non_empty = area.get_non_empty()
-        norm_non_coll = area.get_non_collisions()
-        norm_border_adj = area.get_border_adjacency_score()
-
-        return (norm_non_empty, norm_non_coll, norm_border_adj)
+        return (area.placed / len(individual),)
 
     @dataclass
     class GAConfig:
@@ -237,10 +231,8 @@ class PresentPackingGA:
 
     def _print_generation_header(self):
         """Prints the generation statistics header"""
-        print(
-            f"{'gen':<6} {'evals':<8} {'best_non_empty':<15} {'best_non_coll':<15}"
-            f"{'best_adj':<15}")
-        print("-" * 60)
+        print(f"{'gen':<6} {'evals':<8} {'best_score':<15}")
+        print("-" * 27)
 
     def _evaluate_population(self, population):
         """ Evaluates all invalid individuals in a population """
@@ -263,35 +255,33 @@ class PresentPackingGA:
     def _get_population_stats(self, population):
         """Extracts key statistics from population"""
         valid_i_val = [
-            (ind.fitness.values)
+            ind.fitness.values[0]
             for ind in population
             if ind.fitness.valid
         ]
 
-        best_non_empty, best_coll, best_adj = max(
-            valid_i_val, key=lambda x: x[0])
+        best_score = max(valid_i_val)
 
-        return {
-            'best_non_empty': best_non_empty,
-            'best_non_coll': best_coll,
-            'best_adj': best_adj
-        }
+        return best_score
 
-    def _print_generation_stats(self, gen, eval_count, stats):
+    def _print_generation_stats(self, gen, eval_count, best_score):
         """Prints statistics for a single generation"""
-        print(f"{gen:<6} {eval_count:<8} "
-              f"{stats['best_non_empty']:<15f} {stats['best_non_coll']:<15f}"
-              f"{stats['best_adj']:<15f}")
+        print(f"{gen:<6} {eval_count:<8} {best_score:<15f}")
 
     def _plot_best(self, plotter: Plotter, population: 'creator.Population'):
         # get best
         best = min(population, key=lambda ind: ind.fitness.values[0])
         # get best individuals' plot
         area = PlacementArea(*self.container_dims, self.presents)
+
+        genes = []
+
         for gene_data in best:
             gene = Gene(*gene_data)
-            area.place_present(gene)
-            plotter.update(area.area)
+            genes.append(gene)
+
+        area.place_all_presents(genes)
+        plotter.update(area.area)
 
     def _catastrophic_restart(self, population):
         """ Refreshes population to prevent plateaus """
@@ -345,11 +335,11 @@ class PresentPackingGA:
                 population, elites, offspring, config.mu)
 
             # Get and print stats
-            stats = self._get_population_stats(population)
-            self._print_generation_stats(gen, invalid_count, stats)
+            best_score = self._get_population_stats(population)
+            self._print_generation_stats(gen, invalid_count, best_score)
 
             # Check for solution
-            if stats['best_non_coll'] == 1.0:
+            if best_score == 1:
                 print("\nSolution found!\n\n")
                 return True
 
