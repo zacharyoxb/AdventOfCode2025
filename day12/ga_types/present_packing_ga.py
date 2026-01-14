@@ -270,7 +270,7 @@ class PresentPackingGA:
 
     def _plot_best(self, plotter: Plotter, population: 'creator.Population'):
         # get best
-        best = min(population, key=lambda ind: ind.fitness.values[0])
+        best = max(population, key=lambda ind: ind.fitness.values[0])
         # get best individuals' plot
         area = PlacementArea(*self.container_dims, self.presents)
 
