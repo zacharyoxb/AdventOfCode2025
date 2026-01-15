@@ -212,13 +212,11 @@ class PresentPackingGA:
         """ Evaluates placement, returns tuple of weights """
         area = PlacementArea(*self.container_dims, self.presents)
 
-        # place all presents
-        for gene_data in individual:
-            gene = Gene(*gene_data)
-            if not area.place_present(gene):
-                break
+        genes = [Gene(*gene_data) for gene_data in individual]
 
-        return (area.placed / len(individual),)
+        fitness = area.calculate_fitness(genes)
+
+        return fitness
 
     @dataclass
     class GAConfig:
