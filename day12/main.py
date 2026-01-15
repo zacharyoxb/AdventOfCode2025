@@ -3,7 +3,7 @@ import re
 
 import numpy as np
 
-from ga_types import Present, PresentMatrix,  PresentPackingGA, Plotter
+from ga_types import Present, PresentMatrix,  PresentPackingGA, GAConfig  # , Plotter
 
 
 def can_fit(
@@ -16,9 +16,11 @@ def can_fit(
     genetic_alg = PresentPackingGA(
         (width, height), presents, present_count)
 
-    plotter = Plotter()
+    # plotter = Plotter()
 
-    return genetic_alg.eu_mu_plus_lambda_custom(plotter=plotter)
+    config = GAConfig(width, height, sum(present_count))
+
+    return genetic_alg.eu_mu_plus_lambda_custom(config=config, plotter=None)
 
 
 def info_to_list(placement_info: list[tuple[str, str, str]]) -> list[tuple[int, int, list[int]]]:
@@ -56,7 +58,7 @@ def day12(present_matrices: list[PresentMatrix], placement_info: list[tuple[str,
 
 if __name__ == "__main__":
     raw_lines = []
-    with open("inputs/testinput.txt", encoding="UTF-8") as f:
+    with open("inputs/input.txt", encoding="UTF-8") as f:
         raw_lines = f.readlines()
     FULL_TEXT = " ".join(raw_lines)
 

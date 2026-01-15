@@ -1,6 +1,7 @@
 """ Genetic algorithm for placement """
 
 from dataclasses import dataclass
+import math
 import random
 from typing import Optional
 
@@ -8,6 +9,60 @@ import numpy as np
 from deap import algorithms, base, creator, tools
 
 from ga_types import Present, Gene, PlacementArea, Plotter
+
+
+@dataclass
+class GAConfig:
+    """Configuration parameters for a (μ, λ) Evolutionary Strategy Genetic Algorithm.
+
+    This implements a comma-selection strategy where:
+    - μ = parent population size
+    - λ = offspring population size  
+    - Only offspring are considered for selection (generational replacement)
+    """
+
+    def __init__(self, grid_width: int, grid_height: int, num_shapes: int):
+        self.grid_area = grid_width * grid_height
+        self.num_shapes = num_shapes
+
+        # Base these on problem complexity
+        self.mu = self._calculate_mu()
+        self.lambda_ = self._calculate_lambda()
+        self.cxpb = self._calculate_cxpb()
+        self.mutpb = self._calculate_mutpb()
+        self.ngen = self._calculate_ngen()
+
+    def _calculate_mu(self):
+        """ Parent population size based on search space size. """
+        # Base + scaling with grid area
+        base_population = 50
+        area_factor = self.grid_area / 100  # Normalize to 100-cell grid
+        # Square root scaling
+        return int(base_population * math.sqrt(area_factor))
+
+    def _calculate_lambda(self):
+        """ Offspring count - typically 4-7x mu. """
+        return self.mu * 4  # Balanced ratio
+
+    def _calculate_cxpb(self):
+        """ Crossover probability - higher for larger problems. """
+        # Larger problems benefit more from recombination
+        base_cxpb = 0.6
+        if self.grid_area > 500:
+            return 0.7  # More crossover for complex problems
+        elif self.grid_area < 100:
+            return 0.5  # Less crossover for simple problems
+        return base_cxpb
+
+    def _calculate_mutpb(self):
+        """Mutation probability - complements crossover."""
+        return 1.0 - self.cxpb  # Or independent calculation
+
+    def _calculate_ngen(self):
+        """Generations based on problem difficulty."""
+        base_generations = 100
+        complexity = self.grid_area * self.num_shapes / 100
+        return int(base_generations * math.log2(complexity + 1))
 
 
 class PresentPackingGA:
@@ -218,15 +273,6 @@ class PresentPackingGA:
 
         return fitness
 
-    @dataclass
-    class GAConfig:
-        """ Config for ga algorithm"""
-        mu = 100
-        lambda_ = 400
-        cxpb = 0.6
-        mutpb = 0.4
-        ngen = 200
-
     def _print_generation_header(self):
         """Prints the generation statistics header"""
         print(f"{'gen':<6} {'evals':<8} {'best_score':<15}")
@@ -295,7 +341,7 @@ class PresentPackingGA:
 
     def eu_mu_plus_lambda_custom(
             self,
-            config: GAConfig = GAConfig(),
+            config: GAConfig,
             plotter: Optional[Plotter] = None
     ) -> bool:
         """ Custom implementation of deap function that can exit when solution is found """
