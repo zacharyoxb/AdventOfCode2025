@@ -102,7 +102,7 @@ class PresentPlacementEnv(EnvBase):
 
         # Reward and done specs
         self.reward_spec = Unbounded(shape=torch.Size(
-            [1]), dtype=torch.int64, device=self.device)
+            [1]), dtype=torch.float32, device=self.device)
         self.done_spec = Categorical(
             n=2, shape=torch.Size([1]), dtype=torch.bool, device=self.device)  # 0/1 for False/True
 
@@ -167,7 +167,7 @@ class PresentPlacementEnv(EnvBase):
                 "grid": grid,
                 "presents": presents,
                 "present_count": present_count,
-                "reward": torch.tensor(-20),
+                "reward": torch.tensor(-20, dtype=torch.float32),
                 "done": torch.tensor(True)
             }, batch_size=self.batch_size, device=self.device)
 
@@ -177,7 +177,7 @@ class PresentPlacementEnv(EnvBase):
                 "grid": grid,
                 "presents": presents,
                 "present_count": present_count,
-                "reward": torch.tensor(-20),
+                "reward": torch.tensor(-20, dtype=torch.float32),
                 "done": torch.tensor(True)
             }, batch_size=self.batch_size, device=self.device)
 
@@ -186,7 +186,7 @@ class PresentPlacementEnv(EnvBase):
         grid[y:y+3, x:x+3] = present
 
         # Base reward
-        reward = torch.tensor(2, dtype=torch.int64)
+        reward = torch.tensor(2, dtype=torch.float32)
 
         # Check if all shapes are placed
         done = torch.tensor(False)
