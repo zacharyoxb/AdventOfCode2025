@@ -52,10 +52,10 @@ def get_placement_info(file_name="input.txt") -> list[PlacementInfo]:
 
     # get height and width of container and amount of presents to place
     args = []
-    for height_str, width_str, present_count_str in region_matches:
-        width, height = int(height_str), int(width_str)
+    for width_str, height_str, present_count_str in region_matches:
+        width, height = int(width_str), int(height_str)
         present_count_str = present_count_str.split()
         present_count = list(map(int, present_count_str))
         args.append(PlacementInfo(width, height, torch.tensor(
-            present_count, dtype=torch.uint8)))
+            present_count, dtype=torch.int64)))
     return args

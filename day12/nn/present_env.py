@@ -1,7 +1,7 @@
 """ Neural network for packing presents with orientation masks """
 
 import torch
-from tensordict import TensorDict, TensorDictBase
+from tensordict import TensorDict
 
 from torchrl.data import Bounded, Composite, Unbounded, Categorical
 from torchrl.envs import EnvBase
@@ -13,11 +13,15 @@ class PresentPlacementEnv(EnvBase):
     def __init__(
             self,
             td_params: TensorDict,
+            batch_size=None,
             seed=None,
             device="cpu"
     ):
+        if batch_size is None:
+            batch_size = torch.Size([])
 
-        super().__init__(device=device, batch_size=torch.Size([]))
+        self.batch_size = batch_size
+        super().__init__(device=device, batch_size=self.batch_size)
         self.rng = None
 
         self._make_spec(td_params)
@@ -42,18 +46,14 @@ class PresentPlacementEnv(EnvBase):
 
         td = TensorDict(
             {
-                "params": TensorDict(
-                    {
-                        "grid_size": (w, h),
-                        "presents": presents,
-                        "present_count": present_count,
-                        "max_present_idx": 4,
-                        "max_x": w-3,
-                        "max_y": h-3,
-                        "max_rot": 3,
-                        "max_flip": 1
-                    }
-                )
+                "grid_size": torch.tensor([w, h], dtype=torch.int64),
+                "presents": presents,
+                "present_count": present_count,
+                "max_present_idx": 4,
+                "max_x": w-3,
+                "max_y": h-3,
+                "max_rot": 3,
+                "max_flip": 1
             }
         )
 
@@ -61,54 +61,50 @@ class PresentPlacementEnv(EnvBase):
             td = td.expand(batch_size).contiguous()
         return td
 
-    def make_composite_from_td(self, td):
-        """
-        Custom function to convert a ``tensordict`` in a similar spec structure
-        of unbounded values.
-        """
-        composite = Composite(
-            {
-                key: self.make_composite_from_td(tensor)
-                if isinstance(tensor, TensorDictBase)
-                else Unbounded(dtype=tensor.dtype, device=tensor.device, shape=tensor.shape)
-                for key, tensor in td.items()
-            },
-            shape=td.shape,
-        )
-        return composite
-
     def _make_spec(
             self,
             td_params
     ):
+        # Extract all params as individual variables
+        grid_size = td_params.get("grid_size")
+        w, h = grid_size
+        presents = td_params.get("presents")
+        present_count = td_params.get("present_count")
+        max_present_idx = td_params.get("max_present_idx")
+        max_x = td_params.get("max_x")
+        max_y = td_params.get("max_y")
+        max_rot = td_params.get("max_rot")
+        max_flip = td_params.get("max_flip")
+
         # Observation spec: what the agent sees
         self.observation_spec = Composite({
-            "grid": Bounded(low=0, high=1, shape=td_params.get(("params", "grid_size")),
+            "grid": Bounded(low=0, high=1, shape=torch.Size((h, w)),
                             dtype=torch.uint8, device=self.device),
-            "presents": Bounded(low=0, high=1, shape=td_params.get(("params", "presents")).shape,
+            "presents": Bounded(low=0, high=1, shape=presents.shape,
                                 dtype=torch.uint8, device=self.device),
-            "present_count": Unbounded(shape=5, dtype=torch.int64, device=self.device),
-            "params": self.make_composite_from_td(td_params.get("params"))
+            "present_count": Unbounded(shape=present_count.shape, dtype=torch.int64,
+                                       device=self.device),
         })
 
         # Action spec: what the agent can do
         self.action_spec = Composite({
-            "present_idx": Bounded(low=0, high=5, shape=1, dtype=torch.uint8, device=self.device),
-            "x": Bounded(low=0, high=td_params.get(("params", "max_x")), shape=1, dtype=torch.int64,
+            "present_idx": Bounded(low=0, high=max_present_idx, shape=1, dtype=torch.uint8,
+                                   device=self.device),
+            "x": Bounded(low=0, high=max_x, shape=1, dtype=torch.int64,
                          device=self.device),
-            "y": Bounded(low=0, high=td_params.get(("params", "max_y")), shape=1, dtype=torch.int64,
+            "y": Bounded(low=0, high=max_y, shape=1, dtype=torch.int64,
                          device=self.device),
-            "rot": Bounded(low=0, high=td_params.get(("params", "max_rot")), shape=1,
+            "rot": Bounded(low=0, high=max_rot, shape=1,
                            dtype=torch.uint8, device=self.device),
-            "flip": Bounded(low=0, high=td_params.get(("params", "max_flip")),
-                            shape=torch.Size([2]), dtype=torch.uint8, device=self.device)
+            "flip": Bounded(low=0, high=max_flip, shape=torch.Size([2]), dtype=torch.uint8,
+                            device=self.device)
         })
 
         # Reward and done specs
         self.reward_spec = Unbounded(shape=torch.Size(
             [1]), dtype=torch.int64, device=self.device)
         self.done_spec = Categorical(
-            n=2, shape=torch.Size([1]), device=self.device)  # 0/1 for False/True
+            n=2, shape=torch.Size([1]), dtype=torch.bool, device=self.device)  # 0/1 for False/True
 
     def _set_seed(self, seed: int | None = None):
         """
@@ -125,23 +121,25 @@ class PresentPlacementEnv(EnvBase):
         if tensordict is None:
             tensordict = self.default_params
 
-        grid_size = tensordict.get(("params", "grid_size"))
-        presents = tensordict.get(("params", "presents"))
-        present_count = tensordict.get(("params", "present_count"))
+        grid_size = tensordict.get("grid_size")
+        presents = tensordict.get("presents")
+        present_count = tensordict.get("present_count")
 
         self._make_spec(tensordict)
 
+        # zeros expects height first
+        w, h = grid_size
+
         # Create initial grid state
         grid = torch.zeros(
-            tuple(grid_size), dtype=torch.uint8, device=self.device)
+            (h, w), dtype=torch.uint8, device=self.device)
 
         # Return as TensorDict with observation keys
         return TensorDict({
             "grid": grid,
             "presents": presents,
             "present_count": present_count,
-            "params": tensordict.get("params")
-        }, batch_size=tensordict.batch_size, device=self.device)
+        }, batch_size=self.batch_size, device=self.device)
 
     def _step(self, tensordict: TensorDict) -> TensorDict:
         """ Execute one action - returns NEXT observation + reward + done """
@@ -165,60 +163,40 @@ class PresentPlacementEnv(EnvBase):
         # If collision, exit early
         grid_region = grid[y:y+3, x:x+3]
         if torch.any(present & grid_region):
-            obs_dict = {
+            return TensorDict({
                 "grid": grid,
                 "presents": presents,
                 "present_count": present_count,
-                "params": tensordict.get("params")
-            }
-            return TensorDict({
-                "next": {
-                    "observation": obs_dict
-                },
                 "reward": torch.tensor(-20),
                 "done": torch.tensor(True)
-            }, batch_size=tensordict.batch_size, device=self.device)
+            }, batch_size=self.batch_size, device=self.device)
 
         # If action used present we cannot place, exit early
         if present_count[present_idx] < 1:
-            obs_dict = {
+            return TensorDict({
                 "grid": grid,
                 "presents": presents,
                 "present_count": present_count,
-                "params": tensordict.get("params")
-            }
-            return TensorDict({
-                "next": {
-                    "observation": obs_dict
-                },
                 "reward": torch.tensor(-20),
                 "done": torch.tensor(True)
-            }, batch_size=tensordict.batch_size, device=self.device)
+            }, batch_size=self.batch_size, device=self.device)
 
         # Otherwise, update tensors
         present_count[present_idx] -= 1
         grid[y:y+3, x:x+3] = present
 
         # Base reward
-        reward = torch.tensor(2.0)
+        reward = torch.tensor(2, dtype=torch.int64)
 
         # Check if all shapes are placed
         done = torch.tensor(False)
         if torch.sum(present_count) == 0:
             done = torch.tensor(True)
 
-        # Return next state
-        obs_dict = {
+        return TensorDict({
             "grid": grid,
             "presents": presents,
             "present_count": present_count,
-            "params": tensordict.get("params")
-        }
-
-        return TensorDict({
-            "next": {
-                "observation": obs_dict
-            },
             "reward": reward,
             "done": done
-        }, batch_size=tensordict.batch_size, device=self.device)
+        }, batch_size=self.batch_size, device=self.device)
