@@ -17,6 +17,9 @@ class PresentPlacementEnv():
     ):
         super().__init__()
 
+        self.device = torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu")
+
         self.grid_size = ()
         self.presents = presents
         self.present_count = None
@@ -34,28 +37,49 @@ class PresentPlacementEnv():
             present_count: list[int]
     ):
         self.grid_size = grid_size
-        self.present_count = torch.tensor(present_count, dtype=torch.float16)
+        self.present_count = torch.tensor(
+            present_count, dtype=torch.float16, device=self.device)
         width, height = self.grid_size
 
         # Observation spec: what the agent sees
         self.observation_spec = Composite({
-            "grid": Bounded(low=0, high=1, shape=torch.Size(self.grid_size), dtype=torch.uint8),
-            "presents": Bounded(low=0, high=1, shape=torch.Size([3, 3]), dtype=torch.uint8),
-            "present_count": Unbounded(shape=5, dtype=torch.uint64)
+            "grid": Bounded(low=0, high=1, shape=torch.Size(self.grid_size),
+                            dtype=torch.uint8, device=self.device),
+            "presents": Bounded(low=0, high=1, shape=torch.Size([3, 3]),
+                                dtype=torch.uint8, device=self.device),
+            "present_count": Unbounded(shape=5, dtype=torch.uint64, device=self.device)
         })
 
         # Action spec: what the agent can do
         self.action_spec = Composite({
-            "present_idx": Bounded(low=0, high=5, shape=1, dtype=torch.uint8),
-            "x": Bounded(low=0, high=width-3, shape=1, dtype=torch.uint64),
-            "y": Bounded(low=0, high=height-3, shape=1, dtype=torch.uint64),
-            "rot": Bounded(low=0, high=3, shape=1, dtype=torch.uint8),
-            "flip": Bounded(low=0, high=1, shape=torch.Size([2]), dtype=torch.uint8)
+            "present_idx": Bounded(low=0, high=5, shape=1, dtype=torch.uint8, device=self.device),
+            "x": Bounded(low=0, high=width-3, shape=1, dtype=torch.uint64, device=self.device),
+            "y": Bounded(low=0, high=height-3, shape=1, dtype=torch.uint64, device=self.device),
+            "rot": Bounded(low=0, high=3, shape=1, dtype=torch.uint8, device=self.device),
+            "flip": Bounded(low=0, high=1, shape=torch.Size([2]), dtype=torch.uint8,
+                            device=self.device)
         })
 
         # Reward and done specs
-        self.reward_spec = Unbounded(shape=torch.Size([1]), dtype=torch.int64)
-        self.done_spec = Categorical(n=2)  # 0/1 for False/True
+        self.reward_spec = Unbounded(shape=torch.Size(
+            [1]), dtype=torch.int64, device=self.device)
+        self.done_spec = Categorical(
+            n=2, device=self.device)  # 0/1 for False/True
+
+    @staticmethod
+    def set_seed(seed: int):
+        """
+        Set random seeds for reproducibility.
+
+        Args:
+            seed: Integer seed value
+        """
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)  # For multi-GPU
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
 
     def reset(self, tensordict: TensorDict) -> TensorDict:
         """ Initialize new episode - returns FIRST observation """
