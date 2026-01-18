@@ -25,7 +25,7 @@ def get_presents(file_name="input.txt") -> torch.Tensor:
         binary_matrix: list[list[int]] = [[1 if char == '#' else 0 for char in row]
                                           for row in split_matrix]
         # Convert to PyTorch tensor with float16 dtype
-        tensor_matrix = torch.tensor(binary_matrix, dtype=torch.float16)
+        tensor_matrix = torch.tensor(binary_matrix, dtype=torch.uint8)
         extracted_present_tensors.append(tensor_matrix)
 
     return torch.stack(extracted_present_tensors)
@@ -56,5 +56,6 @@ def get_placement_info(file_name="input.txt") -> list[PlacementInfo]:
         width, height = int(height_str), int(width_str)
         present_count_str = present_count_str.split()
         present_count = list(map(int, present_count_str))
-        args.append(PlacementInfo(width, height, torch.Tensor(present_count)))
+        args.append(PlacementInfo(width, height, torch.tensor(
+            present_count, dtype=torch.uint8)))
     return args

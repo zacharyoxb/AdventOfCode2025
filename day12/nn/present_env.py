@@ -125,14 +125,15 @@ class PresentPlacementEnv(EnvBase):
         if tensordict is None:
             tensordict = self.default_params
 
-        grid_size = tensordict.get(("observation", "grid_size"))
-        presents = tensordict.get(("observation", "presents"))
-        present_count = tensordict.get(("observation", "present_count"))
+        grid_size = tensordict.get(("params", "grid_size"))
+        presents = tensordict.get(("params", "presents"))
+        present_count = tensordict.get(("params", "present_count"))
 
         self._make_spec(tensordict)
 
         # Create initial grid state
-        grid = torch.zeros(grid_size, dtype=torch.uint8, device=self.device)
+        grid = torch.zeros(
+            tuple(grid_size), dtype=torch.uint8, device=self.device)
 
         # Return as TensorDict with observation keys
         return TensorDict({
@@ -149,16 +150,17 @@ class PresentPlacementEnv(EnvBase):
         presents = tensordict.get("presents")
         present_count = tensordict.get("present_count").clone()
 
-        present_idx = tensordict.get(("action, present_idx"))
-        x = tensordict.get(("action", "x"))
-        y = tensordict.get(("action", "y"))
-        rot = tensordict.get(("action", "rot"))
-        flip = tensordict.get(("action", "flip"))
+        present_idx = int(tensordict.get("present_idx"))
+        x = int(tensordict.get("x"))
+        y = int(tensordict.get("y"))
+        rot = int(tensordict.get("rot"))
+        flip = tuple(tensordict.get("flip").tolist())
 
         # Get present
         present = presents[present_idx]
         present = torch.rot90(present, rot)
-        present = torch.flip(present, flip)
+        if sum(flip) != 0:
+            present = torch.flip(present, flip)
 
         # If collision, exit early
         grid_region = grid[y:y+3, x:x+3]
@@ -183,6 +185,7 @@ class PresentPlacementEnv(EnvBase):
                 "grid": grid,
                 "presents": presents,
                 "present_count": present_count,
+                "params": tensordict.get("params")
             }
             return TensorDict({
                 "next": {

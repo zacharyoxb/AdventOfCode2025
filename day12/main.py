@@ -1,8 +1,8 @@
 """ Main day 12 file """
+from torchrl.envs.utils import check_env_specs
+
 from data_utils import reader
 from nn.present_env import PresentPlacementEnv
-
-from torchrl.envs.utils import check_env_specs
 
 
 if __name__ == "__main__":
