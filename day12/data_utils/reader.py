@@ -3,32 +3,32 @@
 from dataclasses import dataclass
 import re
 
-import numpy as np
-
-from main import PresentMatrix
+import torch
 
 
-def get_presents(file_name="input.txt") -> list[PresentMatrix]:
-    """ Extracts present matricies from data"""
+def get_presents(file_name="input.txt") -> torch.Tensor:
+    """ Extracts present matrices from data as a PyTorch tensor """
     raw_lines = []
     with open(f"inputs/{file_name}", encoding="UTF-8") as f:
         raw_lines = f.readlines()
     full_text = " ".join(raw_lines)
 
-    # get all shapes matrixes from text
+    # get all shapes matrices from text
     present_pattern = r"\d+:\s*((?:[.#]{3}\s*){3})"
     shape_matches = re.findall(present_pattern, full_text)
 
-    extracted_present_matrices: list[PresentMatrix] = []
+    extracted_present_tensors: list[torch.Tensor] = []
 
     for extracted_matrix in shape_matches:
         split_matrix = extracted_matrix.split()
 
         binary_matrix: list[list[int]] = [[1 if char == '#' else 0 for char in row]
                                           for row in split_matrix]
-        extracted_present_matrices.append(np.array(binary_matrix, np.float16))
+        # Convert to PyTorch tensor with float16 dtype
+        tensor_matrix = torch.tensor(binary_matrix, dtype=torch.float16)
+        extracted_present_tensors.append(tensor_matrix)
 
-    return extracted_present_matrices
+    return torch.stack(extracted_present_tensors)
 
 
 @dataclass
