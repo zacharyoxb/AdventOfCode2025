@@ -96,7 +96,7 @@ class PresentPlacementEnv():
             "grid": grid,
             "presents": self.presents,
             "present_count": self.present_count
-        }, batch_size=[])
+        }, batch_size=tensordict.batch_size, device=self.device)
 
     def step(self, tensordict: TensorDict) -> TensorDict:
         """ Execute one action - returns NEXT observation + reward + done """
@@ -130,7 +130,7 @@ class PresentPlacementEnv():
                 },
                 "reward": torch.tensor(-20),
                 "done": torch.tensor(True)
-            }, batch_size=[])
+            }, batch_size=tensordict.batch_size, device=self.device)
 
         # If action used present we cannot place, exit early
         if present_count[present_idx] < 1:
@@ -145,7 +145,7 @@ class PresentPlacementEnv():
                 },
                 "reward": torch.tensor(-20),
                 "done": torch.tensor(True)
-            }, batch_size=[])
+            }, batch_size=tensordict.batch_size, device=self.device)
 
         # Otherwise, update tensors
         present_count[present_idx] -= 1
@@ -172,4 +172,4 @@ class PresentPlacementEnv():
             },
             "reward": reward,
             "done": done
-        }, batch_size=tensordict.batch_size)
+        }, batch_size=tensordict.batch_size, device=self.device)
