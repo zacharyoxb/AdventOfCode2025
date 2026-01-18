@@ -36,7 +36,7 @@ class PlacementInfo:
     """ Stores config for each placement problem """
     width: int
     height: int
-    present_count: list[int]
+    present_count: torch.Tensor
 
 
 def get_placement_info(file_name="input.txt") -> list[PlacementInfo]:
@@ -56,5 +56,5 @@ def get_placement_info(file_name="input.txt") -> list[PlacementInfo]:
         width, height = int(height_str), int(width_str)
         present_count_str = present_count_str.split()
         present_count = list(map(int, present_count_str))
-        args.append(PlacementInfo(width, height, present_count))
+        args.append(PlacementInfo(width, height, torch.Tensor(present_count)))
     return args
