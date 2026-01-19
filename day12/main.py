@@ -1,8 +1,11 @@
 """ Main day 12 file """
-from torchrl.envs.utils import check_env_specs
+import torch
+from torch import nn
+from torch import optim
 
 from data_utils import reader
 from nn.present_env import PresentPlacementEnv
+from nn.present_policy import PresentPlacementPolicy
 
 
 if __name__ == "__main__":
@@ -14,4 +17,4 @@ if __name__ == "__main__":
             (info.width, info.height), present_tensor, info.present_count)
 
         env = PresentPlacementEnv(params)
-        check_env_specs(env)
+        policy = PresentPlacementPolicy((info.height, info.width))

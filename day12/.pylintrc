@@ -1,3 +1,0 @@
-[TYPECHECK]
-ignored-classes = deap.base.Toolbox
-ignored-modules = deap
