@@ -200,3 +200,7 @@ class PresentPlacementEnv(EnvBase):
             "reward": reward,
             "done": done
         }, batch_size=self.batch_size, device=self.device)
+
+    def forward(self, *args, **kwargs):
+        """ Unimplemented in environment only class """
+        raise NotImplementedError("This is an env, not a nn.")
