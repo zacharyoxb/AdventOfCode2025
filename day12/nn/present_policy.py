@@ -36,7 +36,7 @@ class PresentPlacementPolicy(nn.Module):
 
         # Process grid
         grid_encoder = nn.Sequential(
-            nn.Linear(grid_size[0]*grid_size[1]*6, 512),
+            nn.Linear(grid_size[0]*grid_size[1], 512),
             nn.ReLU(),
             nn.Linear(512, 256),
             nn.ReLU(),
@@ -78,8 +78,22 @@ class PresentPlacementPolicy(nn.Module):
         self.heads = Heads(present_idx_head, x_head,
                            y_head, rot_head, flip_head)
 
-    def forward(self, grid, presents, present_count):
+    def update_grid_size(self, grid_size):
+        """ Updates grid encoder for new grid size """
+        self.extractors.grid_encoder = nn.Sequential(
+            nn.Linear(grid_size[0]*grid_size[1], 512),
+            nn.ReLU(),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU()
+        )
+
+    def forward(self, tensordict):
         """ Forward function for running of nn """
+        grid, presents, present_count = tensordict.get(
+            ("grid", "presents", "present_count"))
+
         grid_features = self.extractors.grid_encoder(self.flatten(grid))
 
         present_features = self.extractors.present_encoder(

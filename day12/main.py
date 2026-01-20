@@ -1,8 +1,4 @@
 """ Main day 12 file """
-import torch
-from torch import nn
-from torch import optim
-
 from data_utils import reader
 from nn.present_env import PresentPlacementEnv
 from nn.present_policy import PresentPlacementPolicy

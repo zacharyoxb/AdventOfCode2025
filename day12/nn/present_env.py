@@ -67,6 +67,7 @@ class PresentPlacementEnv(EnvBase):
     ):
         # Extract all params as individual variables
         grid_size = td_params.get("grid_size")
+        self.grid_size = grid_size
         w, h = grid_size
         presents = td_params.get("presents")
         present_count = td_params.get("present_count")
@@ -200,6 +201,38 @@ class PresentPlacementEnv(EnvBase):
             "reward": reward,
             "done": done
         }, batch_size=self.batch_size, device=self.device)
+
+    def rollout(self, max_steps=1000, policy=None, callback=None, **_kwargs):
+        """Executes environment rollout with given policy using TensorDict operations."""
+        # preallocate:
+        data = TensorDict({}, [max_steps])
+
+        # Reset environment
+        _data = self.reset(self.default_params)
+
+        policy_input = _data.select("grid", "presents", "present_count")
+
+        # While present_count is not 0 OR steps are exceeded
+        for i in range(max_steps):
+            # Compute an action given a policy
+            if policy:
+                _data["action"] = policy(policy_input)
+            else:
+                _data["action"] = self.action_spec.rand()
+
+            # execute step, collect data
+            _data = self.step(_data)
+            data[i] = _data
+
+            # mdp step
+            _data = self.step_mdp(_data)
+
+            # check if count is 0, if so, break
+            present_count = _data["present_count"]
+            if torch.sum(present_count) == 0:
+                break
+
+        return data
 
     def forward(self, *args, **kwargs):
         """ Unimplemented in environment only class """
