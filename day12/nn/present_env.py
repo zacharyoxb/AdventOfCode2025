@@ -20,16 +20,16 @@ class PresentPlacementEnv(EnvBase):
         if batch_size is None:
             batch_size = torch.Size([])
 
-        self.batch_size = batch_size
         super().__init__(device=device, batch_size=self.batch_size)
+        self.batch_size = batch_size
         self.rng = None
-
-        self._make_spec(td_params)
         self.default_params = td_params
 
         if seed is None:
             seed = torch.empty((), dtype=torch.int64).random_().item()
+
         self.set_seed(int(seed))
+        self._make_spec(td_params)
 
     @staticmethod
     def gen_params(
@@ -46,7 +46,7 @@ class PresentPlacementEnv(EnvBase):
 
         td = TensorDict(
             {
-                "grid_size": torch.tensor([w, h], dtype=torch.int64),
+                "grid_size": torch.tensor([w, h], dtype=torch.float32),
                 "presents": presents,
                 "present_count": present_count,
                 "max_present_idx": 4,
@@ -79,11 +79,11 @@ class PresentPlacementEnv(EnvBase):
 
         # Observation spec: what the agent sees
         self.observation_spec = Composite({
-            "grid": Bounded(low=0, high=1, shape=torch.Size((h, w)),
-                            dtype=torch.uint8, device=self.device),
+            "grid": Bounded(low=0, high=1, shape=torch.Size((int(h), int(w))),
+                            dtype=torch.float32, device=self.device),
             "presents": Bounded(low=0, high=1, shape=presents.shape,
-                                dtype=torch.uint8, device=self.device),
-            "present_count": Unbounded(shape=present_count.shape, dtype=torch.int64,
+                                dtype=torch.float32, device=self.device),
+            "present_count": Unbounded(shape=present_count.shape, dtype=torch.float32,
                                        device=self.device),
         })
 
@@ -133,7 +133,7 @@ class PresentPlacementEnv(EnvBase):
 
         # Create initial grid state
         grid = torch.zeros(
-            (h, w), dtype=torch.uint8, device=self.device)
+            (int(h), int(w)), dtype=torch.float32, device=self.device)
 
         # Return as TensorDict with observation keys
         return TensorDict({
@@ -149,21 +149,24 @@ class PresentPlacementEnv(EnvBase):
         presents = tensordict.get("presents")
         present_count = tensordict.get("present_count").clone()
 
-        present_idx = int(tensordict.get("present_idx"))
-        x = int(tensordict.get("x"))
-        y = int(tensordict.get("y"))
-        rot = int(tensordict.get("rot"))
-        flip = tuple(tensordict.get("flip").tolist())
+        present_idx = int(tensordict.get(("action", "present_idx")))
+        x = int(tensordict.get(("action", "x")))
+        y = int(tensordict.get(("action", "y")))
+        rot = int(tensordict.get(("action", "rot")))
+        flip = tensordict.get(("action", "flip")).tolist()[0]
 
         # Get present
         present = presents[present_idx]
         present = torch.rot90(present, rot)
-        if sum(flip) != 0:
-            present = torch.flip(present, flip)
+
+        if flip[0]:
+            present = torch.flip(present, (1,))
+        if flip[1]:
+            present = torch.flip(present, (0,))
 
         # If collision, exit early
         grid_region = grid[y:y+3, x:x+3]
-        if torch.any(present & grid_region):
+        if torch.any(present * grid_region > 0):
             return TensorDict({
                 "grid": grid,
                 "presents": presents,
@@ -184,7 +187,7 @@ class PresentPlacementEnv(EnvBase):
 
         # Otherwise, update tensors
         present_count[present_idx] -= 1
-        grid[y:y+3, x:x+3] = present
+        grid[y:y+3, x:x+3] = torch.maximum(grid_region, present)
 
         # Base reward
         reward = torch.tensor(2, dtype=torch.float32)

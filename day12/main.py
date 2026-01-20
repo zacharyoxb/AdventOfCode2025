@@ -8,9 +8,14 @@ if __name__ == "__main__":
     present_tensor = reader.get_presents("testinput.txt")
     area_info = reader.get_placement_info("testinput.txt")
 
-    for info in area_info:
-        params = PresentPlacementEnv.gen_params(
-            (info.width, info.height), present_tensor, info.present_count)
+    params = []
 
-        env = PresentPlacementEnv(params)
-        policy = PresentPlacementPolicy((info.height, info.width))
+    for info in area_info:
+        params.append(PresentPlacementEnv.gen_params(
+            (info.width, info.height), present_tensor, info.present_count))
+
+    env = PresentPlacementEnv(params[0])
+    policy = PresentPlacementPolicy()
+
+    for param in params:
+        env.rollout(policy=policy)
