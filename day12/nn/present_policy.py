@@ -27,10 +27,6 @@ class PresentPlacementPolicy(nn.Module):
     """ Policy nn for PresentEnv with spatial awareness """
 
     def __init__(self):
-        """
-        Args:
-            grid_size: (height, width) of the grid
-        """
         super().__init__()
 
         self.flatten = nn.Flatten()

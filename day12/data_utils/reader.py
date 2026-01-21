@@ -1,12 +1,13 @@
 """ Reads data from text """
 
-from dataclasses import dataclass
 import re
 
+from tensordict import TensorDict
 import torch
+from torchrl.data import ReplayBuffer, LazyTensorStorage
 
 
-def get_presents(file_name="input.txt") -> torch.Tensor:
+def _get_presents(file_name) -> torch.Tensor:
     """ Extracts present matrices from data as a PyTorch tensor """
     raw_lines = []
     with open(f"inputs/{file_name}", encoding="UTF-8") as f:
@@ -30,15 +31,7 @@ def get_presents(file_name="input.txt") -> torch.Tensor:
     return torch.stack(extracted_present_tensors)
 
 
-@dataclass
-class PlacementInfo:
-    """ Stores config for each placement problem """
-    width: int
-    height: int
-    present_count: torch.Tensor
-
-
-def get_placement_info(file_name="input.txt") -> list[PlacementInfo]:
+def _get_placement_info(file_name="input.txt") -> list[tuple[int, int, torch.Tensor]]:
     """ Gets placement info on area and how many of each present to place """
     raw_lines = []
     with open(f"inputs/{file_name}", encoding="UTF-8") as f:
@@ -55,6 +48,30 @@ def get_placement_info(file_name="input.txt") -> list[PlacementInfo]:
         width, height = int(width_str), int(height_str)
         present_count_str = present_count_str.split()
         present_count = list(map(int, present_count_str))
-        args.append(PlacementInfo(width, height, torch.tensor(
+        args.append((width, height, torch.tensor(
             present_count, dtype=torch.float32)))
     return args
+
+
+def get_data(file_name="input.txt") -> ReplayBuffer:
+    """ Collates all data into a replay buffer """
+    presents = _get_presents(file_name)
+    placement_info = _get_placement_info(file_name)
+
+    # Create buffer with LazyTensorStorage to handle different sizes
+    buffer = ReplayBuffer(
+        storage=LazyTensorStorage(max_size=len(
+            placement_info) * 1000),  # Estimate capacity
+        batch_size=32
+    )
+
+    for grid_width, grid_height, present_count in placement_info:
+        params = TensorDict({
+            "grid_size": torch.tensor([grid_width, grid_height], dtype=torch.float32),
+            "presents": presents.clone(),
+            "present_count": present_count.clone(),
+        }, batch_size=[])
+
+        buffer.add(params)
+
+    return buffer

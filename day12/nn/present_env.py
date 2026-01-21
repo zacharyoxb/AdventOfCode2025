@@ -3,8 +3,13 @@
 import torch
 from tensordict import TensorDict
 
-from torchrl.data import Bounded, Composite, Unbounded, Categorical
+from torchrl.data import (Bounded, Composite, Unbounded,
+                          UnboundedContinuous, Categorical)
 from torchrl.envs import EnvBase
+
+MAX_PRESENT_IDX = 5
+MAX_ROT = 3
+MAX_FLIP = 1
 
 
 class PresentPlacementEnv(EnvBase):
@@ -12,7 +17,6 @@ class PresentPlacementEnv(EnvBase):
 
     def __init__(
             self,
-            td_params: TensorDict,
             batch_size=None,
             seed=None,
             device="cpu"
@@ -20,84 +24,37 @@ class PresentPlacementEnv(EnvBase):
         if batch_size is None:
             batch_size = torch.Size([])
 
-        super().__init__(device=device, batch_size=self.batch_size)
+        super().__init__(device=device, batch_size=batch_size)
         self.batch_size = batch_size
         self.rng = None
-        self.default_params = td_params
 
         if seed is None:
             seed = torch.empty((), dtype=torch.int64).random_().item()
 
         self.set_seed(int(seed))
-        self._make_spec(td_params)
+        self._make_spec()
 
-    @staticmethod
-    def gen_params(
-            grid_size: tuple[int, int],
-            presents: torch.Tensor,
-            present_count: torch.Tensor,
-            batch_size=None
-    ) -> TensorDict:
-        """ Generates parameters for specs """
-        if batch_size is None:
-            batch_size = []
-
-        w, h = grid_size
-
-        td = TensorDict(
-            {
-                "grid_size": torch.tensor([w, h], dtype=torch.float32),
-                "presents": presents,
-                "present_count": present_count,
-                "max_present_idx": 4,
-                "max_x": w-3,
-                "max_y": h-3,
-                "max_rot": 3,
-                "max_flip": 1
-            }
-        )
-
-        if batch_size:
-            td = td.expand(batch_size).contiguous()
-        return td
-
-    def _make_spec(
-            self,
-            td_params
-    ):
-        # Extract all params as individual variables
-        grid_size = td_params.get("grid_size")
-        self.grid_size = grid_size
-        w, h = grid_size
-        presents = td_params.get("presents")
-        present_count = td_params.get("present_count")
-        max_present_idx = td_params.get("max_present_idx")
-        max_x = td_params.get("max_x")
-        max_y = td_params.get("max_y")
-        max_rot = td_params.get("max_rot")
-        max_flip = td_params.get("max_flip")
-
+    def _make_spec(self):
         # Observation spec: what the agent sees
         self.observation_spec = Composite({
-            "grid": Bounded(low=0, high=1, shape=torch.Size((int(h), int(w))),
-                            dtype=torch.float32, device=self.device),
-            "presents": Bounded(low=0, high=1, shape=presents.shape,
+            "grid": UnboundedContinuous(dtype=torch.float32, device=self.device),
+            "presents": Bounded(low=0, high=1, shape=torch.Size([3, 3]),
                                 dtype=torch.float32, device=self.device),
-            "present_count": Unbounded(shape=present_count.shape, dtype=torch.float32,
+            "present_count": Unbounded(shape=torch.Size([6]), dtype=torch.float32,
                                        device=self.device),
         })
 
         # Action spec: what the agent can do
         self.action_spec = Composite({
-            "present_idx": Bounded(low=0, high=max_present_idx, shape=1, dtype=torch.uint8,
+            "present_idx": Bounded(low=0, high=MAX_PRESENT_IDX, shape=1, dtype=torch.uint8,
                                    device=self.device),
-            "x": Bounded(low=0, high=max_x, shape=1, dtype=torch.int64,
-                         device=self.device),
-            "y": Bounded(low=0, high=max_y, shape=1, dtype=torch.int64,
-                         device=self.device),
-            "rot": Bounded(low=0, high=max_rot, shape=1,
+            "x": Unbounded(shape=1, dtype=torch.int64,
+                           device=self.device),
+            "y": Unbounded(shape=1, dtype=torch.int64,
+                           device=self.device),
+            "rot": Bounded(low=0, high=MAX_ROT, shape=1,
                            dtype=torch.uint8, device=self.device),
-            "flip": Bounded(low=0, high=max_flip, shape=torch.Size([2]), dtype=torch.uint8,
+            "flip": Bounded(low=0, high=MAX_FLIP, shape=torch.Size([2]), dtype=torch.uint8,
                             device=self.device)
         })
 
@@ -119,14 +76,9 @@ class PresentPlacementEnv(EnvBase):
     def _reset(self, tensordict, **kwargs) -> TensorDict:
         """ Initialize new episode - returns FIRST observation """
 
-        if tensordict is None:
-            tensordict = self.default_params
-
         grid_size = tensordict.get("grid_size")
         presents = tensordict.get("presents")
         present_count = tensordict.get("present_count")
-
-        self._make_spec(tensordict)
 
         # zeros expects height first
         w, h = grid_size
@@ -211,7 +163,7 @@ class PresentPlacementEnv(EnvBase):
         data = TensorDict({}, [max_steps])
 
         # Reset environment
-        _data = self.reset(self.default_params)
+        _data = self.reset()  # CHANGE
 
         policy_input = _data.select("grid", "presents", "present_count")
 
