@@ -127,16 +127,6 @@ class PresentPlacementEnv(EnvBase):
                 "done": torch.tensor(True)
             }, batch_size=self.batch_size, device=self.device)
 
-        # If action used present we cannot place, exit early
-        if present_count[present_idx] < 1:
-            return TensorDict({
-                "grid": grid,
-                "presents": presents,
-                "present_count": present_count,
-                "reward": torch.tensor(-20, dtype=torch.float32),
-                "done": torch.tensor(True)
-            }, batch_size=self.batch_size, device=self.device)
-
         # Otherwise, update tensors
         present_count[present_idx] -= 1
         grid[y:y+3, x:x+3] = torch.maximum(grid_region, present)
@@ -158,7 +148,7 @@ class PresentPlacementEnv(EnvBase):
         }, batch_size=self.batch_size, device=self.device)
 
     def rollout(self, max_steps=1000, policy=None, callback=None, **_kwargs):
-        """Executes environment rollout with given policy using TensorDict operations."""
+        """ Executes environment rollout with given policy using TensorDict operations. """
         # preallocate:
         data = TensorDict({}, [max_steps])
 

@@ -21,9 +21,10 @@ class Heads:
     y_head: nn.Sequential
     rot_head: nn.Sequential
     flip_head: nn.Sequential
+    value_head: nn.Sequential
 
 
-class PresentPlacementPolicy(nn.Module):
+class ActorCritic(nn.Module):
     """ Policy nn for PresentEnv with spatial awareness """
 
     def __init__(self):
@@ -68,29 +69,46 @@ class PresentPlacementPolicy(nn.Module):
 
         combined_features = 128 + 128 + 32
 
+        # Output distributions
         present_idx_head = nn.Sequential(
-            nn.Linear(combined_features, 1),
-            nn.Softmax(-1)
-        )
-        x_head = nn.Sequential(
-            nn.Linear(combined_features, 1),
-            nn.Sigmoid()
-        )
-        y_head = nn.Sequential(
-            nn.Linear(combined_features, 1),
-            nn.Sigmoid()
+            nn.Linear(combined_features, 128),
+            nn.ReLU(),
+            nn.Linear(128, 6)  # 6 presents
         )
         rot_head = nn.Sequential(
-            nn.Linear(combined_features, 1),
-            nn.Softmax(-1)
+            nn.Linear(combined_features, 128),
+            nn.ReLU(),
+            nn.Linear(128, 4)  # 4 rotations
         )
         flip_head = nn.Sequential(
-            nn.Linear(combined_features, 2),
-            nn.Sigmoid()
+            nn.Linear(combined_features, 128),
+            nn.ReLU(),
+            nn.Linear(128, 2)  # 2 binary decisions
+        )
+
+        # Continuous actions with tanh activation for bounded values
+        x_head = nn.Sequential(
+            nn.Linear(combined_features, 64),
+            nn.ReLU(),
+            nn.Linear(64, 2)  # mean and log_std
+        )
+        y_head = nn.Sequential(
+            nn.Linear(combined_features, 64),
+            nn.ReLU(),
+            nn.Linear(64, 2)  # mean and log_std
+        )
+
+        # Critic
+        value_head = nn.Sequential(
+            nn.Linear(combined_features, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1)  # single value estimate
         )
 
         self.heads = Heads(present_idx_head, x_head,
-                           y_head, rot_head, flip_head)
+                           y_head, rot_head, flip_head, value_head)
 
     def update_grid_size(self, grid_size):
         """ Updates grid encoder for new grid size """
@@ -105,61 +123,44 @@ class PresentPlacementPolicy(nn.Module):
 
     def forward(self, tensordict):
         """ Forward function for running of nn """
-        grid = tensordict.get("grid")
-        presents = tensordict.get("presents")
-        present_count = tensordict.get("present_count")
+        # get observations with batch dimensions
+        grid = tensordict.get("grid").unsqueeze(0).unsqueeze(0)
+        presents = tensordict.get("presents").unsqueeze(0)
+        present_count = tensordict.get("present_count").unsqueeze(0)
 
-        # get grid dimensions for x y calculations
-        h, w = grid.shape
-
-        # add batch dimensions
-        grid = grid.unsqueeze(0).unsqueeze(0)
-        presents = presents.unsqueeze(0)
-        present_count = present_count.unsqueeze(0)
-
-        # get grid features first
+        # get features from observations
         grid_features = self.grid_encoder(grid)
-
-        # get features from
         present_features = self.present_encoder(
             presents.flatten(start_dim=1))
-
-        # get present_count features
         present_count_features = self.present_count_encoder(
             present_count)
 
+        # concat features
         all_features = torch.cat([
             grid_features,
             present_features,
             present_count_features
         ], dim=1)
 
-        with torch.no_grad():
-            present_idx_probs = self.heads.present_idx_head(all_features)
-            x_norm = self.heads.x_head(all_features)
-            y_norm = self.heads.y_head(all_features)
-            rot_probs = self.heads.rot_head(all_features)
-            flip_probs = self.heads.flip_head(all_features)
+        # calculate logits
+        present_idx_logits = self.heads.present_idx_head(all_features)
+        rot_logits = self.heads.rot_head(all_features)
+        flip_logits = self.heads.flip_head(all_features)
 
-            # convert probabilities to predicted values
-            present_idx = torch.multinomial(
-                present_idx_probs, 1).to(torch.uint8)
-            rot = torch.multinomial(rot_probs, 1).to(torch.uint8)
+        # mask out unavailable presents from logits
+        idx_mask = (present_count > 0).float()
+        present_idx_logits = present_idx_logits + idx_mask.log()
 
-            max_x = w - 3
-            max_y = h - 3
-
-            # coordinates are continuous: scale norm values and round
-            x = (x_norm * max_x).round().to(torch.int64)
-            y = (y_norm * max_y).round().to(torch.int64)
-
-            # flip is binary so just has 1 threshold
-            flip = (flip_probs > 0.5).to(torch.uint8)
+        # get parameters for x y coords
+        x_params = self.heads.x_head(all_features)
+        y_params = self.heads.y_head(all_features)
 
         return TensorDict({
-            "present_idx": present_idx,
-            "x": x,
-            "y": y,
-            "rot": rot,
-            "flip": flip
-        }, batch_size=present_idx.shape[0])
+            "present_idx_logits": present_idx_logits,
+            "rot_logits": rot_logits,
+            "flip_logits": flip_logits,
+            "x_mean": x_params[:, 0],
+            "x_log_std": x_params[:, 1],
+            "y_mean": y_params[: 0],
+            "y_log_std": y_params[:, 1]
+        }, batch_size=present_idx_logits.shape[0])
