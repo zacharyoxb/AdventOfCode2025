@@ -30,6 +30,7 @@ class TrainingConfig:
     ppo_epochs: int = 4
     batch_size: int = 64
     num_steps: int = 2048
+    total_frames: int = 10_000_000
 
 
 @dataclass
@@ -90,3 +91,8 @@ class PPOConfig:
     def num_steps(self):
         """ Number of steps to collect before updating """
         return self.training.num_steps
+
+    @property
+    def total_frames(self):
+        """ Number of frames to use in total """
+        return self.training.total_frames

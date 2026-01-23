@@ -12,7 +12,7 @@ MAX_ROT = 3
 MAX_FLIP = 1
 
 
-class PresentPlacementEnv(EnvBase):
+class PresentEnv(EnvBase):
     """ RL environment for present placement """
 
     def __init__(
@@ -153,7 +153,7 @@ class PresentPlacementEnv(EnvBase):
         data = TensorDict({}, [max_steps])
 
         # Reset environment
-        _data = self.reset()  # CHANGE
+        _data = self.reset()
 
         policy_input = _data.select("grid", "presents", "present_count")
 

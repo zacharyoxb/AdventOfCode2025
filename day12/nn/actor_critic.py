@@ -24,7 +24,7 @@ class Heads:
     value_head: nn.Sequential
 
 
-class ActorCritic(nn.Module):
+class PresentActorCritic(nn.Module):
     """ Policy nn for PresentEnv with spatial awareness """
 
     def __init__(self):
@@ -86,16 +86,16 @@ class ActorCritic(nn.Module):
             nn.Linear(128, 2)  # 2 binary decisions
         )
 
-        # Continuous actions with tanh activation for bounded values
+        # Softmax transform will be used for these continuous estimates
         x_head = nn.Sequential(
             nn.Linear(combined_features, 64),
             nn.ReLU(),
-            nn.Linear(64, 2)  # mean and log_std
+            nn.Linear(64, 1)
         )
         y_head = nn.Sequential(
             nn.Linear(combined_features, 64),
             nn.ReLU(),
-            nn.Linear(64, 2)  # mean and log_std
+            nn.Linear(64, 1)
         )
 
         # Critic
@@ -110,17 +110,6 @@ class ActorCritic(nn.Module):
         self.heads = Heads(present_idx_head, x_head,
                            y_head, rot_head, flip_head, value_head)
 
-    def update_grid_size(self, grid_size):
-        """ Updates grid encoder for new grid size """
-        self.grid_encoder = nn.Sequential(
-            nn.Linear(grid_size[0]*grid_size[1], 512),
-            nn.ReLU(),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU()
-        )
-
     def forward(self, tensordict):
         """ Forward function for running of nn """
         # get observations with batch dimensions
@@ -128,18 +117,13 @@ class ActorCritic(nn.Module):
         presents = tensordict.get("presents").unsqueeze(0)
         present_count = tensordict.get("present_count").unsqueeze(0)
 
-        # get features from observations
-        grid_features = self.grid_encoder(grid)
-        present_features = self.present_encoder(
-            presents.flatten(start_dim=1))
-        present_count_features = self.present_count_encoder(
-            present_count)
-
-        # concat features
+        # Concat all features
         all_features = torch.cat([
-            grid_features,
-            present_features,
-            present_count_features
+            self.grid_encoder(grid),
+            self.present_encoder(
+                presents.flatten(start_dim=1)),
+            self.present_count_encoder(
+                present_count)
         ], dim=1)
 
         # calculate logits
@@ -147,20 +131,21 @@ class ActorCritic(nn.Module):
         rot_logits = self.heads.rot_head(all_features)
         flip_logits = self.heads.flip_head(all_features)
 
+        x_logits = self.heads.x_head(all_features)
+        y_logits = self.heads.y_head(all_features)
+
         # mask out unavailable presents from logits
         idx_mask = (present_count > 0).float()
         present_idx_logits = present_idx_logits + idx_mask.log()
 
-        # get parameters for x y coords
-        x_params = self.heads.x_head(all_features)
-        y_params = self.heads.y_head(all_features)
+        # get value
+        value = self.heads.value_head(all_features)
 
         return TensorDict({
             "present_idx_logits": present_idx_logits,
             "rot_logits": rot_logits,
             "flip_logits": flip_logits,
-            "x_mean": x_params[:, 0],
-            "x_log_std": x_params[:, 1],
-            "y_mean": y_params[: 0],
-            "y_log_std": y_params[:, 1]
+            "x": x_logits,
+            "y": y_logits,
+            "value": value
         }, batch_size=present_idx_logits.shape[0])
