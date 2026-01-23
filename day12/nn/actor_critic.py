@@ -131,8 +131,8 @@ class PresentActorCritic(nn.Module):
         rot_logits = self.heads.rot_head(all_features)
         flip_logits = self.heads.flip_head(all_features)
 
-        x_logits = self.heads.x_head(all_features)
-        y_logits = self.heads.y_head(all_features)
+        x_gauss = self.heads.x_head(all_features)
+        y_gauss = self.heads.y_head(all_features)
 
         # mask out unavailable presents from logits
         idx_mask = (present_count > 0).float()
@@ -145,7 +145,7 @@ class PresentActorCritic(nn.Module):
             "present_idx_logits": present_idx_logits,
             "rot_logits": rot_logits,
             "flip_logits": flip_logits,
-            "x": x_logits,
-            "y": y_logits,
+            "x": x_gauss,
+            "y": y_gauss,
             "value": value
         }, batch_size=present_idx_logits.shape[0])
