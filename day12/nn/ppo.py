@@ -51,9 +51,10 @@ class PPO:
         self.config = config or PPOConfig()
 
         # Set up ActorCritic / TD module / Actor
-        self.policy = PresentActorCritic().to(device)
-        self.td_module = TensorDictModule(
-            self.policy,
+        self.actor_net = PresentActorCritic().to(device)
+
+        td_module = TensorDictModule(
+            self.actor_net,
             in_keys=[
                 "grid", "presents", "present_count"
             ],
@@ -65,8 +66,8 @@ class PPO:
                 ("params", "y")
             ]
         )
-        self.actor = ProbabilisticActor(
-            module=self.td_module,
+        self.policy_module = ProbabilisticActor(
+            module=td_module,
             spec=self.env.action_spec,
             in_keys=["params"],
             distribution_class=CompositeDistribution,
@@ -82,7 +83,7 @@ class PPO:
 
         # Value network
         self.value_module = ValueOperator(
-            module=self.policy,
+            module=self.actor_net,
             in_keys=[
                 "grid", "presents", "present_count"
             ]
@@ -91,45 +92,40 @@ class PPO:
         # Collector
         self.collector = SyncDataCollector(
             self.env,
-            self.policy,
-            frames_per_batch=self.config.batch_size,
-            total_frames=self.config.num_steps,
+            self.actor_net,
+            frames_per_batch=self.config.frames_per_batch,
+            total_frames=self.config.total_frames,
             split_trajs=False,
             device=self.device
         )
 
         # Data for model
-        self.data = data_buff
+        self.replay_buffer = data_buff
 
         # Loss function config
-        self.adv_module = GAE(
+        self.advantage_module = GAE(
             gamma=self.config.gamma,
-            lmbda=self.config.gae_lambda,
+            lmbda=self.config.lmbda,
             value_network=self.value_module,
             average_gae=True,
             device=torch.device(self.device)
         )
 
         self.loss_module = ClipPPOLoss(
-            actor_network=self.actor,
+            actor_network=self.policy_module,
             critic_network=self.value_module,
             clip_epsilon=self.config.clip_epsilon,
-            entropy_bonus=bool(self.config.entropy_coef),
-            entropy_coeff=self.config.entropy_coef,
+            entropy_bonus=bool(self.config.entropy_eps),
+            entropy_coeff=self.config.entropy_eps,
             critic_coeff=1.0,
             loss_critic_type="smooth_l1"
         )
 
-        self.optimizer = torch.optim.Adam(
+        self.optim = torch.optim.Adam(
             self.loss_module.parameters(),
-            lr=self.config.learning_rate
+            lr=self.config.lr
         )
 
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, self.config.total_frames // self.config.num_steps, 0.0
+            self.optim, self.config.total_frames // self.config.frames_per_batch, 0.0
         )
-
-    def select_action(self, state, training=True):
-        """
-        Select an action using the current policy
-        """

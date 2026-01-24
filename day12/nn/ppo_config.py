@@ -1,98 +1,113 @@
 """ Config classes for PPO """
+import multiprocessing
 from dataclasses import dataclass, field
 
-
-@dataclass
-class LearningConfig:
-    """ Learning rate and optimization parameters """
-    learning_rate: float = 3e-4
-    max_grad_norm: float = 0.5
+import torch
 
 
 @dataclass
-class DiscountConfig:
-    """ Temporal discounting and advantage estimation """
-    gamma: float = 0.99
-    gae_lambda: float = 0.95
+class Hyperparameters:
+    """ Hyperparameters """
+    is_fork = multiprocessing.get_start_method() == "fork"
+    device = (
+        torch.device(0)
+        if torch.cuda.is_available() and not is_fork
+        else torch.device("cpu")
+    )
+    num_cells = 256
+    lr = 3e-4
+    max_grad_norm = 1.0
 
 
 @dataclass
-class LossConfig:
+class DataCollection:
+    """ Data collection parameters """
+    frames_per_batch = 1000
+    total_frames = 50_000
+
+
+@dataclass
+class PPOParameters:
     """ Loss function weights and coefficients """
-    clip_epsilon: float = 0.2
-    value_loss_coef: float = 0.5
-    entropy_coef: float = 0.01
-
-
-@dataclass
-class TrainingConfig:
-    """ Training process parameters """
-    ppo_epochs: int = 4
-    batch_size: int = 64
-    num_steps: int = 2048
-    total_frames: int = 10_000_000
+    sub_batch_size = 64
+    num_epochs = 10
+    clip_epsilon = (
+        0.2
+    )
+    gamma = 0.99
+    lmbda = 0.95
+    entropy_eps = 1e-4
 
 
 @dataclass
 class PPOConfig:
     """Complete PPO Hyperparameters Configuration"""
 
-    learning: LearningConfig = field(default=LearningConfig())
-    discount: DiscountConfig = field(default=DiscountConfig())
-    loss: LossConfig = field(default=LossConfig())
-    training: TrainingConfig = field(default=TrainingConfig())
+    hyper_parameters: Hyperparameters = field(default=Hyperparameters())
+    data_collection: DataCollection = field(default=DataCollection())
+    ppo_parameters: PPOParameters = field(default=PPOParameters())
 
     @property
-    def learning_rate(self):
-        """ Learning rate for the optimizer """
-        return self.learning.learning_rate
+    def is_fork(self):
+        """ If process is forked """
+        return self.hyper_parameters.is_fork
+
+    @property
+    def device(self):
+        """ Device being used """
+        return self.hyper_parameters.device
+
+    @property
+    def num_cells(self):
+        """ Number of cells in each layer / output dimension """
+        return self.hyper_parameters.num_cells
+
+    @property
+    def lr(self):
+        """ Learning rate """
+        return self.hyper_parameters.lr
 
     @property
     def max_grad_norm(self):
-        """ Max Gradient Norm: Gradient clipping threshold """
-        return self.learning.max_grad_norm
+        """ Gradient clipping threshold """
+        return self.hyper_parameters.max_grad_norm
 
     @property
-    def gamma(self):
-        """ Gamma (γ): Future reward discount factor """
-        return self.discount.gamma
-
-    @property
-    def gae_lambda(self):
-        """ GAE Lambda (λ): Generalized Advantage Estimation parameter """
-        return self.discount.gae_lambda
-
-    @property
-    def clip_epsilon(self):
-        """ Clip Epsilon (ε): PPO clipping parameter """
-        return self.loss.clip_epsilon
-
-    @property
-    def value_loss_coef(self):
-        """ Value Loss Coefficient: Critic loss weight """
-        return self.loss.value_loss_coef
-
-    @property
-    def entropy_coef(self):
-        """ Entropy Coefficient: Exploration bonus """
-        return self.loss.entropy_coef
-
-    @property
-    def ppo_epochs(self):
-        """ PPO Epochs: Number of optimization passes per batch """
-        return self.training.ppo_epochs
-
-    @property
-    def batch_size(self):
-        """ Batch Size: Mini-batch size for optimization """
-        return self.training.batch_size
-
-    @property
-    def num_steps(self):
-        """ Number of steps to collect before updating """
-        return self.training.num_steps
+    def frames_per_batch(self):
+        """ Environment steps collected per training batch """
+        return self.data_collection.frames_per_batch
 
     @property
     def total_frames(self):
-        """ Number of frames to use in total """
-        return self.training.total_frames
+        """ Total environment steps for training """
+        return self.data_collection.total_frames
+
+    @property
+    def sub_batch_size(self):
+        """ Batch Size: Mini-batch size for optimization """
+        return self.ppo_parameters.sub_batch_size
+
+    @property
+    def num_epochs(self):
+        """ PPO Epochs: Number of optimization passes per batch """
+        return self.ppo_parameters.num_epochs
+
+    @property
+    def clip_epsilon(self):
+        """ PPO clipping parameter """
+        return self.ppo_parameters.clip_epsilon
+
+    @property
+    def gamma(self):
+        """ Discount factor for future rewards """
+        return self.ppo_parameters.gamma
+
+    @property
+    def lmbda(self):
+        """ GAE (Generalized Advantage Estimation) parameter """
+        return self.ppo_parameters.lmbda
+
+    @property
+    def entropy_eps(self):
+        """ Entropy Coefficient: Exploration bonus """
+        return self.ppo_parameters.entropy_eps
